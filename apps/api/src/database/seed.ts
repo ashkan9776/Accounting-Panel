@@ -8,7 +8,8 @@ import {
   STANDARD_IRANIAN_SUBSIDIARIES,
   DEFAULT_IRANIAN_RULES_1403,
   AuditHashChain,
-  FloatingDimensionType
+  FloatingDimensionType,
+  MoadianCryptoEngine
 } from '@accounting/core';
 
 export async function runSeed() {
@@ -55,6 +56,12 @@ export async function runSeed() {
     DELETE FROM product_units;
     DELETE FROM product_categories;
     DELETE FROM warehouses;
+    DELETE FROM moadian_reconciliations;
+    DELETE FROM moadian_outbox_queue;
+    DELETE FROM moadian_invoice_items;
+    DELETE FROM moadian_invoices;
+    DELETE FROM moadian_unit_mappings;
+    DELETE FROM moadian_settings;
   `);
   console.log('[Seed] Schema applied and tables initialized successfully.');
 
@@ -670,6 +677,43 @@ export async function runSeed() {
   );
 
   console.log('[Seed Phase 3] Warehouses, categories, units, and products seeded successfully.');
+
+  // ==========================================
+  // فاز ۴: تنظیمات سامانه مودیان و نگاشت واحدها
+  // ==========================================
+  const moadianKeys = MoadianCryptoEngine.generateKeyPair();
+  await run(
+    `INSERT OR REPLACE INTO moadian_settings (
+      id, tenant_id, company_id, fiscal_memory_id, transport_method,
+      private_key_pem, public_key_pem, public_key_base64,
+      tsp_provider_name, tsp_api_key, is_sandbox_mode, is_active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'DIRECT', ?, ?, ?, NULL, NULL, 1, 1, ?, ?)`,
+    [
+      'moadian-set-1',
+      tenantId,
+      companyId,
+      'A123B4', // شناسه ۶ کاراکتری حافظه مالیاتی نمونه هلدینگ پیشرو
+      moadianKeys.privateKeyPem,
+      moadianKeys.publicKeyPem,
+      moadianKeys.publicKeyBase64,
+      now,
+      now
+    ]
+  );
+
+  // نگاشت واحدهای سنجش به کدهای ۴ رقمی سامانه مودیان
+  await run(
+    `INSERT OR REPLACE INTO moadian_unit_mappings (id, tenant_id, unit_id, moadian_unit_code, moadian_unit_title, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    ['map-unit-1', tenantId, 'unit-piece', '1640', 'تعداد / عدد / دستگاه', now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO moadian_unit_mappings (id, tenant_id, unit_id, moadian_unit_code, moadian_unit_title, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    ['map-unit-2', tenantId, 'unit-box', '1641', 'بسته / کارتن', now]
+  );
+
+  console.log('[Seed Phase 4] Moadian keys, settings and unit mappings seeded successfully.');
 
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();

@@ -723,3 +723,134 @@ CREATE INDEX IF NOT EXISTS idx_stock_ledger_prod_wh ON stock_ledger_entries(tena
 CREATE INDEX IF NOT EXISTS idx_sales_docs_tenant ON sales_documents(tenant_id, document_number);
 CREATE INDEX IF NOT EXISTS idx_purchase_docs_tenant ON purchase_documents(tenant_id, document_number);
 
+-- ==========================================================
+-- فاز ۴: سامانه مودیان و پایانه‌های فروشگاهی (صورتحساب الکترونیکی)
+-- ==========================================================
+
+-- ۲۱. تنظیمات مودیان و کلیدهای امنیتی هر شرکت
+CREATE TABLE IF NOT EXISTS moadian_settings (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL UNIQUE,
+    fiscal_memory_id TEXT NOT NULL, -- شناسه ۶ کاراکتری حافظه مالیاتی
+    transport_method TEXT DEFAULT 'DIRECT', -- DIRECT, TRUSTED_COMPANY, GOVERNMENT_GATEWAY
+    private_key_pem TEXT NOT NULL, -- کلید خصوصی ۲۸ بیتی RSA جهت امضای دیجیتال
+    public_key_pem TEXT NOT NULL, -- کلید عمومی
+    public_key_base64 TEXT NOT NULL, -- کلید عمومی بدون هدر جهت کارپوشه
+    tsp_provider_name TEXT, -- نام شرکت معتمد در صورت انتخاب
+    tsp_api_key TEXT,
+    is_sandbox_mode INTEGER DEFAULT 1, -- حالت شبیه‌ساز یا واقعی
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+-- ۲۲. نگاشت واحدهای سنجش به کدهای مودیان
+CREATE TABLE IF NOT EXISTS moadian_unit_mappings (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    unit_id TEXT NOT NULL,
+    moadian_unit_code TEXT NOT NULL, -- کد ۴ رقمی جدول مودیان (مثلاً 1640 عدد)
+    moadian_unit_title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (unit_id) REFERENCES product_units(id)
+);
+
+-- ۲۳. صورتحساب‌های الکترونیکی ثبت‌شده در سامانه مودیان
+CREATE TABLE IF NOT EXISTS moadian_invoices (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    sales_document_id TEXT, -- فاکتور فروش داخلی مرتبط در صورت وجود
+    purchase_document_id TEXT, -- در صورت ثبت صورتحساب خرید
+    tax_id TEXT UNIQUE NOT NULL, -- شماره منحصر به فرد مالیاتی ۲۲ کاراکتری
+    invoice_type TEXT NOT NULL, -- TYPE_1, TYPE_2, TYPE_3
+    invoice_pattern TEXT NOT NULL, -- PATTERN_1_GENERAL, PATTERN_2_GOLD, ...
+    invoice_subject TEXT NOT NULL, -- MAIN, CORRECTION, CANCELLATION, RETURN
+    reference_tax_id TEXT, -- شماره مالیاتی صورتحساب مرجع در فاکتورهای اصلاحی/ابطالی
+    issue_date_shamsi TEXT NOT NULL,
+    issue_date_timestamp INTEGER NOT NULL,
+    total_gross_amount TEXT NOT NULL,
+    total_discount_amount TEXT DEFAULT '0',
+    total_net_amount TEXT NOT NULL,
+    total_vat_amount TEXT DEFAULT '0',
+    total_grand_amount TEXT NOT NULL,
+    status TEXT DEFAULT 'PENDING', -- PENDING, QUEUED, SENT, IN_PROGRESS, CONFIRMED, REJECTED, FAILED
+    tracking_token TEXT, -- کد پیگیری دریافت شده از کارپوشه سازمان مالیاتی
+    packet_id TEXT,
+    server_timestamp INTEGER,
+    response_errors_json TEXT, -- لاگ کدهای خطا در صورت رد شدن
+    created_by_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (sales_document_id) REFERENCES sales_documents(id)
+);
+
+-- ۲۴. ردیف‌های صورتحساب مودیان
+CREATE TABLE IF NOT EXISTS moadian_invoice_items (
+    id TEXT PRIMARY KEY,
+    moadian_invoice_id TEXT NOT NULL,
+    row_number INTEGER NOT NULL,
+    product_id TEXT,
+    sstid TEXT NOT NULL, -- شناسه ۱۳ رقمی کالا یا خدمت مالیاتی
+    description TEXT NOT NULL,
+    quantity TEXT NOT NULL,
+    unit_code TEXT NOT NULL,
+    unit_price TEXT NOT NULL,
+    total_price TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    net_price TEXT NOT NULL,
+    vat_rate TEXT NOT NULL,
+    vat_amount TEXT NOT NULL,
+    final_amount TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (moadian_invoice_id) REFERENCES moadian_invoices(id) ON DELETE CASCADE
+);
+
+-- ۲۵. صف مقاوم ارسال صورتحساب‌ها (Outbox Queue)
+CREATE TABLE IF NOT EXISTS moadian_outbox_queue (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    moadian_invoice_id TEXT NOT NULL,
+    priority INTEGER DEFAULT 1,
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 5,
+    status TEXT DEFAULT 'PENDING', -- PENDING, PROCESSING, SENT, FAILED
+    next_retry_at TEXT NOT NULL,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (moadian_invoice_id) REFERENCES moadian_invoices(id) ON DELETE CASCADE
+);
+
+-- ۲۶. جدول مغایرت‌گیری کارپوشه مالیاتی (Reconciliation)
+CREATE TABLE IF NOT EXISTS moadian_reconciliations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    tax_id TEXT NOT NULL,
+    document_type TEXT NOT NULL, -- SALES, PURCHASE
+    portal_amount TEXT NOT NULL,
+    internal_amount TEXT NOT NULL,
+    discrepancy_amount TEXT NOT NULL,
+    status TEXT NOT NULL, -- MATCHED, DISCREPANT, ONLY_IN_PORTAL, ONLY_IN_SYSTEM
+    reconciled_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_moadian_tax_id ON moadian_invoices(tax_id);
+CREATE INDEX IF NOT EXISTS idx_moadian_status ON moadian_invoices(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_moadian_outbox_status ON moadian_outbox_queue(status, next_retry_at);
+
+

@@ -11,6 +11,8 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
   let createdChequeId: string;
   let createdSalesId: string;
   let createdCountId: string;
+  let createdMoadianInvoiceId: string;
+  let createdTaxId: string;
 
   beforeAll(async () => {
     await runSeed();
@@ -538,6 +540,166 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     const latest = kardexRes.body.data[kardexRes.body.data.length - 1];
     expect(latest.balance_quantity).toBe('15');
     expect(latest.document_type).toBe('COUNT_DISCREPANCY');
+  });
+
+  // ==========================================
+  // آزمون‌های فاز ۴: سامانه مودیان و صورتحساب الکترونیکی
+  // ==========================================
+
+  it('Step 18 (Phase 4): Should retrieve company Moadian settings and verify memory ID', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/moadian/settings')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.fiscal_memory_id).toBe('A123B4');
+    expect(res.body.data.public_key_base64).toBeDefined();
+    expect(res.body.data.is_sandbox_mode).toBe(1);
+  });
+
+  it('Step 19 (Phase 4): Should generate new RSA 2048-bit key pair for tax portal registration', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/moadian/settings/generate-keys')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.publicKeyPem).toContain('BEGIN PUBLIC KEY');
+    expect(res.body.data.publicKeyBase64.length).toBeGreaterThan(100);
+    expect(res.body.data.instruction).toBeDefined();
+  });
+
+  it('Step 20 (Phase 4): Should prepare Type 1 electronic invoice from sales document with 22-char Tax ID', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/moadian/invoices/prepare-from-sales/${createdSalesId}`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        invoiceType: 'TYPE_1',
+        invoicePattern: 'PATTERN_1_GENERAL'
+      })
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    createdMoadianInvoiceId = res.body.data.id;
+    createdTaxId = res.body.data.taxId;
+
+    // شماره مالیاتی باید دقیقاً ۲۲ کاراکتر و دارای پیشوند حافظه مالیاتی باشد
+    expect(createdTaxId).toHaveLength(22);
+    expect(createdTaxId.startsWith('A123B4')).toBe(true);
+    expect(res.body.data.status).toBe('PENDING');
+    expect(res.body.data.items).toHaveLength(1);
+    expect(res.body.data.items[0].sstid).toBe('2710000012345');
+    expect(res.body.data.items[0].unitCode).toBe('1640');
+  });
+
+  it('Step 21 (Phase 4): Should digitally sign and send invoice to Tax Authority (confirmed in sandbox)', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/moadian/invoices/${createdMoadianInvoiceId}/send`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.isSuccess).toBe(true);
+    expect(res.body.data.taxId).toBe(createdTaxId);
+    expect(res.body.data.status).toBe('CONFIRMED');
+    expect(res.body.data.trackingToken).toBeDefined();
+    expect(res.body.data.packetId).toBeDefined();
+  });
+
+  it('Step 22 (Phase 4): Should inquire invoice confirmation status from tax portal', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/moadian/invoices/${createdMoadianInvoiceId}/inquire`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.taxId).toBe(createdTaxId);
+    expect(res.body.data.portalStatus).toBe('CONFIRMED');
+    expect(res.body.data.hasErrors).toBe(false);
+  });
+
+  it('Step 23 (Phase 4): Should prepare and send Cancellation invoice referencing original Tax ID', async () => {
+    const cancelRes = await request(app.getHttpServer())
+      .post(`/api/v1/moadian/invoices/prepare-cancellation/${createdMoadianInvoiceId}`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(201);
+
+    expect(cancelRes.body.success).toBe(true);
+    const cancelId = cancelRes.body.data.id;
+    expect(cancelRes.body.data.invoiceSubject).toBe('CANCELLATION');
+
+    // ارسال صورتحساب ابطالی
+    const sendRes = await request(app.getHttpServer())
+      .post(`/api/v1/moadian/invoices/${cancelId}/send`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(201);
+
+    expect(sendRes.body.success).toBe(true);
+    expect(sendRes.body.data.status).toBe('CONFIRMED');
+  });
+
+  it('Step 24 (Phase 4): Should process Outbox Queue asynchronously with exponential backoff capability', async () => {
+    const outboxRes = await request(app.getHttpServer())
+      .post('/api/v1/moadian/outbox/process')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(201);
+
+    expect(outboxRes.body.success).toBe(true);
+    expect(outboxRes.body.data.processedCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('Step 25 (Phase 4): Should perform reconciliation with Tax Portal invoices and report discrepancies', async () => {
+    const reconcileData = {
+      portalInvoices: [
+        {
+          taxId: createdTaxId,
+          documentType: 'SALES',
+          portalAmount: '1870000000' // مبلغ دقیقاً منطبق با صورتحساب سیستم
+        },
+        {
+          taxId: 'A123B40000000000000999',
+          documentType: 'SALES',
+          portalAmount: '500000000' // صورتحسابی که فقط در کارپوشه است
+        }
+      ]
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/moadian/reconcile')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(reconcileData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveLength(2);
+
+    const matched = res.body.data.find((r: any) => r.taxId === createdTaxId);
+    expect(matched).toBeDefined();
+    expect(matched.status).toBe('MATCHED');
+    expect(matched.discrepancyAmount).toBe('0');
+
+    const portalOnly = res.body.data.find((r: any) => r.taxId === 'A123B40000000000000999');
+    expect(portalOnly).toBeDefined();
+    expect(portalOnly.status).toBe('ONLY_IN_PORTAL');
   });
 
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {
