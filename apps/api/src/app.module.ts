@@ -8,6 +8,9 @@ import { RulesModule } from './modules/rules/rules.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { PartiesModule } from './modules/parties/parties.module';
 import { TreasuryModule } from './modules/treasury/treasury.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+import { PurchasesModule } from './modules/purchases/purchases.module';
+import { SalesModule } from './modules/sales/sales.module';
 
 @Module({
   imports: [
@@ -16,6 +19,9 @@ import { TreasuryModule } from './modules/treasury/treasury.module';
     AccountingModule,
     PartiesModule,
     TreasuryModule,
+    InventoryModule,
+    PurchasesModule,
+    SalesModule,
     RulesModule,
     AuditModule
   ],

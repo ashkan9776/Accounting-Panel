@@ -15,3 +15,7 @@ export * from './treasury/types';
 export * from './treasury/sayad-adapter';
 export * from './treasury/cheque-posting-engine';
 export * from './treasury/party-aging';
+
+export * from './inventory/types';
+export * from './inventory/valuation-engine';
+export * from './inventory/inventory-posting-engine';

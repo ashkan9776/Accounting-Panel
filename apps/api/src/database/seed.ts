@@ -11,7 +11,7 @@ import {
   FloatingDimensionType
 } from '@accounting/core';
 
-async function runSeed() {
+export async function runSeed() {
   const storageDir = path.resolve(process.cwd(), 'storage');
   if (!fs.existsSync(storageDir)) {
     fs.mkdirSync(storageDir, { recursive: true });
@@ -35,7 +35,27 @@ async function runSeed() {
   const schemaPath = path.resolve(__dirname, 'schema.sql');
   const schemaSql = fs.readFileSync(schemaPath, 'utf8');
   await exec(schemaSql);
-  await exec('DELETE FROM audit_logs; DELETE FROM journal_lines; DELETE FROM journal_entries; DELETE FROM cheques; DELETE FROM cheque_status_history; DELETE FROM money_transfers;');
+  await exec(`
+    DELETE FROM audit_logs;
+    DELETE FROM journal_lines;
+    DELETE FROM journal_entries;
+    DELETE FROM cheques;
+    DELETE FROM cheque_status_history;
+    DELETE FROM money_transfers;
+    DELETE FROM stock_ledger_entries;
+    DELETE FROM purchase_document_items;
+    DELETE FROM purchase_documents;
+    DELETE FROM sales_document_items;
+    DELETE FROM sales_documents;
+    DELETE FROM inventory_count_items;
+    DELETE FROM inventory_counts;
+    DELETE FROM product_variants;
+    DELETE FROM products;
+    DELETE FROM unit_conversions;
+    DELETE FROM product_units;
+    DELETE FROM product_categories;
+    DELETE FROM warehouses;
+  `);
   console.log('[Seed] Schema applied and tables initialized successfully.');
 
   const now = new Date().toISOString();
@@ -497,11 +517,167 @@ async function runSeed() {
 
   console.log('[Seed Phase 2] Phase 2 parties, banks, cash, and petty cash seeded successfully.');
 
+  // ==========================================
+  // فاز ۳: انبار، کالاها، خدمات و کاردکس
+  // ==========================================
+  // دسته‌بندی کالاها
+  await run(
+    `INSERT OR REPLACE INTO product_categories (id, tenant_id, company_id, code, title, parent_id, created_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+    ['cat-digital', tenantId, companyId, 'CAT-01', 'کالاهای دیجیتال و تجهیزات الکترونیک', now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO product_categories (id, tenant_id, company_id, code, title, parent_id, created_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+    ['cat-services', tenantId, companyId, 'CAT-02', 'خدمات فنی، مهندسی و مالی', now]
+  );
+
+  // واحدهای سنجش کالا
+  await run(
+    `INSERT OR REPLACE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+    ['unit-piece', tenantId, companyId, 'PCS', 'دستگاه / عدد', 'عدد', now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+    ['unit-box', tenantId, companyId, 'BOX', 'کارتن (بسته ۱۰ تایی)', 'کارتن', now]
+  );
+
+  // ضریب تبدیل واحد (هر کارتن = ۱۰ عدد)
+  await run(
+    `INSERT OR REPLACE INTO unit_conversions (id, tenant_id, from_unit_id, to_unit_id, conversion_rate, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    ['conv-box-to-piece', tenantId, 'unit-box', 'unit-piece', '10', now]
+  );
+
+  // انبارها
+  await run(
+    `INSERT OR REPLACE INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      'wh-main',
+      tenantId,
+      companyId,
+      branchId,
+      'WH01',
+      'انبار مرکزی قطعات و کالا (ونک)',
+      'تهران، خیابان ملاصدرا، انبار مرکزی پیشرو',
+      '02188880001',
+      'علی مرادی',
+      now
+    ]
+  );
+  await run(
+    `INSERT OR REPLACE INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      'wh-retail',
+      tenantId,
+      companyId,
+      branchId,
+      'WH02',
+      'انبار فروشگاه و ویترین',
+      'تهران، میدان ونک، فروشگاه پیشرو',
+      '02188880002',
+      'حسین صادقی',
+      now
+    ]
+  );
+
+  // کالاها و خدمات
+  // ۱. کالای فیزیکی با روش میانگین موزون متحرک (MOVING_AVERAGE)
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '0.10', 'MOVING_AVERAGE', '5', '100', '350000000', '280000000', 1, ?)`,
+    [
+      'prod-laptop',
+      tenantId,
+      companyId,
+      'cat-digital',
+      'unit-piece',
+      'PRD-101',
+      'لپ‌تاپ لنوو ThinkPad E14',
+      'GOODS',
+      '6921234567890',
+      now
+    ]
+  );
+
+  // ۲. کالای فیزیکی جانبی با روش میانگین
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '0.10', 'MOVING_AVERAGE', '10', '500', '15000000', '10000000', 1, ?)`,
+    [
+      'prod-mouse',
+      tenantId,
+      companyId,
+      'cat-digital',
+      'unit-piece',
+      'PRD-102',
+      'موس بی‌سیم لاجیتک M185',
+      'GOODS',
+      '6921234567891',
+      now
+    ]
+  );
+
+  // ۳. کالای فیزیکی با روش FIFO
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '0.10', 'FIFO', '5', '50', '180000000', '140000000', 1, ?)`,
+    [
+      'prod-tablet',
+      tenantId,
+      companyId,
+      'cat-digital',
+      'unit-piece',
+      'PRD-103',
+      'تبلت سامسونگ Galaxy Tab A9',
+      'GOODS',
+      '6921234567892',
+      now
+    ]
+  );
+
+  // ۴. خدمات غیرفیزیکی (فاقد کاردکس انبار)
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, '0.10', 'MOVING_AVERAGE', '0', '0', '50000000', '0', 1, ?)`,
+    [
+      'prod-consulting',
+      tenantId,
+      companyId,
+      'cat-services',
+      'unit-piece',
+      'SRV-201',
+      'خدمات مشاوره مدیریت و راه‌اندازی شبکه',
+      'SERVICE',
+      now
+    ]
+  );
+
+  console.log('[Seed Phase 3] Warehouses, categories, units, and products seeded successfully.');
+
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();
 }
 
-runSeed().catch((err) => {
-  console.error('[Seed] Error during seeding:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  runSeed().catch((err) => {
+    console.error('[Seed] Error during seeding:', err);
+    process.exit(1);
+  });
+}

@@ -458,3 +458,268 @@ CREATE INDEX IF NOT EXISTS idx_parties_national_id ON parties(tenant_id, nationa
 CREATE INDEX IF NOT EXISTS idx_cheques_tenant_direction ON cheques(tenant_id, cheque_direction);
 CREATE INDEX IF NOT EXISTS idx_cheques_sayad ON cheques(sayad_id);
 CREATE INDEX IF NOT EXISTS idx_cheques_due_date ON cheques(tenant_id, due_date_shamsi);
+
+-- ==========================================================
+-- فاز ۳: کالا، خدمات، انبار، کاردکس مقداری-ریالی، خرید و فروش
+-- ==========================================================
+
+-- ۱۴. دسته‌بندی و واحدهای سنجش کالا
+CREATE TABLE IF NOT EXISTS product_categories (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    parent_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (parent_id) REFERENCES product_categories(id)
+);
+
+CREATE TABLE IF NOT EXISTS product_units (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    symbol TEXT,
+    is_reference INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE TABLE IF NOT EXISTS unit_conversions (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    from_unit_id TEXT NOT NULL,
+    to_unit_id TEXT NOT NULL,
+    conversion_rate TEXT NOT NULL, -- ضریب تبدیل (Decimal string)
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (from_unit_id) REFERENCES product_units(id),
+    FOREIGN KEY (to_unit_id) REFERENCES product_units(id)
+);
+
+-- ۱۵. کالاها و خدمات
+CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    category_id TEXT,
+    unit_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL, -- GOODS, SERVICE
+    barcode TEXT,
+    tax_exempt INTEGER DEFAULT 0,
+    vat_rate TEXT DEFAULT '0.10',
+    valuation_method TEXT DEFAULT 'MOVING_AVERAGE', -- MOVING_AVERAGE, FIFO
+    min_stock_alert TEXT DEFAULT '0',
+    max_stock_alert TEXT DEFAULT '0',
+    sell_price TEXT DEFAULT '0',
+    purchase_price TEXT DEFAULT '0',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (category_id) REFERENCES product_categories(id),
+    FOREIGN KEY (unit_id) REFERENCES product_units(id)
+);
+
+CREATE TABLE IF NOT EXISTS product_variants (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    sku TEXT NOT NULL,
+    title TEXT NOT NULL,
+    barcode TEXT,
+    additional_cost TEXT DEFAULT '0',
+    additional_price TEXT DEFAULT '0',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+
+-- ۱۶. انبارها
+CREATE TABLE IF NOT EXISTS warehouses (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    address TEXT,
+    phone TEXT,
+    keeper_name TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+-- ۱۷. کاردکس مقداری - ریالی انبار (Stock Ledger)
+CREATE TABLE IF NOT EXISTS stock_ledger_entries (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    warehouse_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    variant_id TEXT,
+    document_type TEXT NOT NULL, -- RECEIPT, ISSUE, TRANSFER_IN, TRANSFER_OUT, RETURN_PURCHASE, RETURN_SALES, COUNT_DISCREPANCY
+    document_id TEXT NOT NULL,
+    document_number TEXT NOT NULL,
+    date_shamsi TEXT NOT NULL,
+    in_quantity TEXT DEFAULT '0',
+    in_unit_cost TEXT DEFAULT '0',
+    in_total_cost TEXT DEFAULT '0',
+    out_quantity TEXT DEFAULT '0',
+    out_unit_cost TEXT DEFAULT '0',
+    out_total_cost TEXT DEFAULT '0',
+    balance_quantity TEXT NOT NULL,
+    balance_unit_cost TEXT NOT NULL,
+    balance_total_cost TEXT NOT NULL,
+    fifo_layers_json TEXT, -- JSON serialization of remaining FIFO layers
+    journal_entry_id TEXT,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- ۱۸. اسناد خرید و ورود به انبار (Purchases & Landed Cost)
+CREATE TABLE IF NOT EXISTS purchase_documents (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    warehouse_id TEXT NOT NULL,
+    supplier_party_id TEXT NOT NULL,
+    freight_party_id TEXT,
+    document_number TEXT NOT NULL,
+    date_shamsi TEXT NOT NULL,
+    total_goods_amount TEXT NOT NULL,
+    freight_amount TEXT DEFAULT '0',
+    total_discount TEXT DEFAULT '0',
+    total_vat TEXT DEFAULT '0',
+    grand_total TEXT NOT NULL,
+    status TEXT DEFAULT 'APPROVED', -- DRAFT, APPROVED, CANCELLED
+    journal_entry_id TEXT,
+    description TEXT,
+    created_by_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
+    FOREIGN KEY (supplier_party_id) REFERENCES parties(id),
+    FOREIGN KEY (freight_party_id) REFERENCES parties(id)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_document_items (
+    id TEXT PRIMARY KEY,
+    purchase_document_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    variant_id TEXT,
+    quantity TEXT NOT NULL,
+    unit_cost TEXT NOT NULL,
+    total_amount TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    vat_amount TEXT DEFAULT '0',
+    allocated_freight_cost TEXT DEFAULT '0',
+    final_unit_cost TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (purchase_document_id) REFERENCES purchase_documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- ۱۹. اسناد فروش رسمی و حواله خروج انبار (Sales & COGS)
+CREATE TABLE IF NOT EXISTS sales_documents (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    warehouse_id TEXT,
+    customer_party_id TEXT NOT NULL,
+    document_number TEXT NOT NULL,
+    document_type TEXT DEFAULT 'INVOICE', -- PROFORMA, INVOICE, RETURN
+    date_shamsi TEXT NOT NULL,
+    gross_amount TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    net_amount TEXT NOT NULL,
+    vat_amount TEXT DEFAULT '0',
+    grand_total TEXT NOT NULL,
+    cogs_total TEXT DEFAULT '0',
+    status TEXT DEFAULT 'APPROVED', -- DRAFT, APPROVED, CANCELLED
+    sales_journal_entry_id TEXT,
+    cogs_journal_entry_id TEXT,
+    payment_method TEXT DEFAULT 'CREDIT', -- CREDIT, CASH, POS, MIXED
+    description TEXT,
+    created_by_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (customer_party_id) REFERENCES parties(id)
+);
+
+CREATE TABLE IF NOT EXISTS sales_document_items (
+    id TEXT PRIMARY KEY,
+    sales_document_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    variant_id TEXT,
+    quantity TEXT NOT NULL,
+    unit_price TEXT NOT NULL,
+    total_price TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    net_amount TEXT NOT NULL,
+    vat_amount TEXT DEFAULT '0',
+    unit_cogs TEXT DEFAULT '0',
+    total_cogs TEXT DEFAULT '0',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (sales_document_id) REFERENCES sales_documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- ۲۰. انبارگردانی و مغایرت‌ها (Inventory Counting & Adjustments)
+CREATE TABLE IF NOT EXISTS inventory_counts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    warehouse_id TEXT NOT NULL,
+    count_number TEXT NOT NULL,
+    count_date_shamsi TEXT NOT NULL,
+    status TEXT DEFAULT 'ADJUSTED', -- IN_PROGRESS, APPROVED, ADJUSTED
+    journal_entry_id TEXT,
+    description TEXT,
+    created_by_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id)
+);
+
+CREATE TABLE IF NOT EXISTS inventory_count_items (
+    id TEXT PRIMARY KEY,
+    inventory_count_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    system_quantity TEXT NOT NULL,
+    physical_quantity TEXT NOT NULL,
+    discrepancy_quantity TEXT NOT NULL,
+    unit_cost TEXT NOT NULL,
+    total_discrepancy_value TEXT NOT NULL,
+    discrepancy_type TEXT NOT NULL, -- DEFICIT, SURPLUS, NONE
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (inventory_count_id) REFERENCES inventory_counts(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_products_tenant_code ON products(tenant_id, code);
+CREATE INDEX IF NOT EXISTS idx_stock_ledger_prod_wh ON stock_ledger_entries(tenant_id, warehouse_id, product_id);
+CREATE INDEX IF NOT EXISTS idx_sales_docs_tenant ON sales_documents(tenant_id, document_number);
+CREATE INDEX IF NOT EXISTS idx_purchase_docs_tenant ON purchase_documents(tenant_id, document_number);
+
