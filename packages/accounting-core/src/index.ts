@@ -10,3 +10,8 @@ export * from './journal/journal-engine';
 export * from './reports/trial-balance';
 export * from './reports/general-ledger';
 export * from './audit/hash-chain';
+
+export * from './treasury/types';
+export * from './treasury/sayad-adapter';
+export * from './treasury/cheque-posting-engine';
+export * from './treasury/party-aging';

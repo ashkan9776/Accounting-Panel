@@ -35,7 +35,8 @@ async function runSeed() {
   const schemaPath = path.resolve(__dirname, 'schema.sql');
   const schemaSql = fs.readFileSync(schemaPath, 'utf8');
   await exec(schemaSql);
-  console.log('[Seed] Schema applied successfully.');
+  await exec('DELETE FROM audit_logs; DELETE FROM journal_lines; DELETE FROM journal_entries; DELETE FROM cheques; DELETE FROM cheque_status_history; DELETE FROM money_transfers;');
+  console.log('[Seed] Schema applied and tables initialized successfully.');
 
   const now = new Date().toISOString();
 
@@ -374,6 +375,127 @@ async function runSeed() {
       JSON.stringify(log2.payload)
     ]
   );
+
+  // فاز ۲: درج اطلاعات پایه اشخاص، بانک‌ها، صندوق، تنخواه و چک صیاد
+  console.log('[Seed Phase 2] Seeding Parties and Treasury Baseline...');
+
+  // اشخاص
+  await run(
+    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, first_name, last_name, national_id, mobile, credit_limit, credit_terms_days, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      'party-cust-1',
+      tenantId,
+      companyId,
+      'INDIVIDUAL_IRANIAN',
+      'آقای علی رضایی (مشتری وفادار)',
+      'علی',
+      'رضایی',
+      '0084575948',
+      '09121111111',
+      '100000000',
+      30,
+      1,
+      0,
+      0,
+      'dim-cust-1',
+      now
+    ]
+  );
+
+  await run(
+    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, national_id, economic_code, phone, credit_limit, credit_terms_days, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      'party-cust-2',
+      tenantId,
+      companyId,
+      'LEGAL_ENTITY',
+      'شرکت فناوری سامان پارس (مشتری حقوقی)',
+      '10100000006',
+      '411122223333',
+      '02188881111',
+      '500000000',
+      60,
+      1,
+      0,
+      0,
+      'dim-cust-2',
+      now
+    ]
+  );
+
+  await run(
+    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, national_id, phone, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, 1, ?)`,
+    [
+      'party-supp-1',
+      tenantId,
+      companyId,
+      'LEGAL_ENTITY',
+      'بازرگانی قطعات یدکی ایران (تامین‌کننده)',
+      '10100000010',
+      '02188882222',
+      'dim-supp-1',
+      now
+    ]
+  );
+
+  // حساب‌های بانکی
+  await run(
+    `INSERT OR REPLACE INTO bank_accounts (id, tenant_id, company_id, bank_name, branch_name, account_number, iban, card_number, floating_dimension_id, initial_balance, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      'bank-saman-1',
+      tenantId,
+      companyId,
+      'بانک سامان',
+      'شعبه ونک',
+      '8401-123456',
+      'IR820120000000004123456789',
+      '6219861012345670',
+      'dim-bank-1',
+      '500000000',
+      now
+    ]
+  );
+
+  // صندوق نقدی
+  await run(
+    `INSERT OR REPLACE INTO cash_desks (id, tenant_id, company_id, branch_id, code, title, floating_dimension_id, initial_balance, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      'cash-desk-1',
+      tenantId,
+      companyId,
+      branchId,
+      'CSH01',
+      'صندوق نقدی ریالی شعبه ونک',
+      'dim-cash-1',
+      '20000000',
+      now
+    ]
+  );
+
+  // تنخواه‌گردان
+  await run(
+    `INSERT OR REPLACE INTO petty_cash_funds (id, tenant_id, company_id, branch_id, code, title, custodian_party_id, ceiling_amount, floating_dimension_id, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      'petty-1',
+      tenantId,
+      companyId,
+      branchId,
+      'PETTY01',
+      'تنخواه امور اداری مرکزی',
+      'party-cust-1',
+      '50000000',
+      'dim-cust-1',
+      now
+    ]
+  );
+
+  console.log('[Seed Phase 2] Phase 2 parties, banks, cash, and petty cash seeded successfully.');
 
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();

@@ -41,7 +41,7 @@ export class JournalEntriesService {
 
   private async getLatestAuditHash(tenantId: string): Promise<string> {
     const latest = await this.db.queryOne(
-      'SELECT current_hash FROM audit_logs WHERE tenant_id = ? ORDER BY timestamp DESC LIMIT 1',
+      'SELECT current_hash FROM audit_logs WHERE tenant_id = ? ORDER BY rowid DESC LIMIT 1',
       [tenantId]
     );
     return latest?.current_hash || AuditHashChain.GENESIS_HASH;

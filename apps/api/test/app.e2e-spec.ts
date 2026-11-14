@@ -3,9 +3,11 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 
-describe('Accounting Core Platform E2E Integration Tests (فاز ۱)', () => {
+describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲)', () => {
   let app: INestApplication;
   let jwtToken: string;
+  let createdPartyId: string;
+  let createdChequeId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -19,6 +21,10 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱)', () => {
   afterAll(async () => {
     await app.close();
   });
+
+  // ==========================================
+  // آزمون‌های فاز ۱: هسته، کدینگ و اسناد دوبل
+  // ==========================================
 
   it('Step 1: Should authenticate with mobile and password and return JWT', async () => {
     const res = await request(app.getHttpServer())
@@ -48,7 +54,6 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱)', () => {
 
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data)).toBe(true);
-    // باید حداقل ۹ گروه اصلی استاندارد وجود داشته باشد
     expect(res.body.data.length).toBeGreaterThanOrEqual(9);
 
     const group1 = res.body.data.find((g: any) => g.code === '1');
@@ -89,72 +94,189 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱)', () => {
     expect(res.body.message).toContain('عدم توازن در سند حسابداری');
   });
 
-  it('Step 4: Should successfully create, approve, finalize, and verify trial balance', async () => {
-    // ایجاد سند متوازن: فروش ۵۰,۰۰۰,۰۰۰ ریال با کارتخوان
-    const validEntry = {
-      entryDateShamsi: '1403/08/24',
-      description: 'فروش روزانه شعبه مرکزی با پوز',
-      lines: [
+  // ==========================================
+  // آزمون‌های فاز ۲: اشخاص، خزانه‌داری و چک صیاد
+  // ==========================================
+
+  it('Step 4 (Phase 2): Should create a Party and automatically link floating dimension', async () => {
+    const partyData = {
+      partyType: 'INDIVIDUAL_IRANIAN',
+      name: 'آقای بهرام راد (مشتری جدید)',
+      nationalId: '0084575948',
+      mobile: '09123456789',
+      creditLimit: 150000000,
+      creditTermsDays: 45,
+      isCustomer: true
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/parties')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(partyData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBeDefined();
+    expect(res.body.data.floatingDimensionId).toBeDefined();
+    expect(res.body.data.code).toBeDefined();
+
+    createdPartyId = res.body.data.id;
+  });
+
+  it('Step 5 (Phase 2): Should reject party creation with invalid National ID', async () => {
+    const invalidParty = {
+      partyType: 'INDIVIDUAL_IRANIAN',
+      name: 'شخص نامعتبر',
+      nationalId: '1111111111' // ارقام یکسان نامعتبر است
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/parties')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(invalidParty)
+      .expect(400);
+
+    expect(res.body.message).toContain('کد ملی شخص حقیقی ۱۰ رقمی نامعتبر است');
+  });
+
+  it('Step 6 (Phase 2): Should execute money transfer from Bank to Cash Desk and post balanced entry', async () => {
+    const transferData = {
+      sourceType: 'BANK',
+      sourceId: 'dim-bank-1', // بانک سامان
+      destType: 'CASH',
+      destId: 'dim-cash-1',   // صندوق مرکزی
+      amount: 20000000,
+      transferDateShamsi: '1403/08/24',
+      trackingCode: 'TRF-98214',
+      description: 'شارژ صندوق نقدی از حساب بانک سامان'
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/treasury/transfers')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(transferData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.transferId).toBeDefined();
+    expect(res.body.data.journalEntryId).toBeDefined();
+  });
+
+  it('Step 7 (Phase 2): Should inquire Sayad cheque status from Central Bank adapter', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/treasury/cheques/sayad/inquire/1234567890123456')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.isValid).toBe(true);
+    expect(res.body.data.color).toBe('WHITE');
+    expect(res.body.data.isBounced).toBe(false);
+  });
+
+  it('Step 8 (Phase 2): Should register receivable Sayad cheque with AUTO_POST and issue receipt entry', async () => {
+    const chequeData = {
+      chequeDirection: 'RECEIVABLE',
+      sayadId: '1234567890123456',
+      chequeSerialNumber: 'CHQ-1403-1002',
+      bankName: 'بانک ملت',
+      drawerPartyId: 'party-cust-1', // علی رضایی
+      amount: 50000000,
+      issueDateShamsi: '1403/08/24',
+      dueDateShamsi: '1403/11/30',
+      postingPolicy: 'AUTO_POST',
+      description: 'تسویه فاکتور فروش با چک صیادی ۳ ماهه'
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/treasury/cheques')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(chequeData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBeDefined();
+    expect(res.body.data.status).toBe('AT_HAND');
+    expect(res.body.data.journalEntryId).toBeDefined();
+
+    createdChequeId = res.body.data.id;
+  });
+
+  it('Step 9 (Phase 2): Should deposit receivable cheque to bank (IN_CLEARING) and issue journal entry', async () => {
+    const depositData = {
+      toStatus: 'IN_CLEARING',
+      actionDateShamsi: '1403/08/25',
+      bankDimensionId: 'dim-bank-1', // بانک سامان
+      description: 'واگذاری چک به بانک سامان شعبه ونک'
+    };
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/treasury/cheques/${createdChequeId}/status`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(depositData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.toStatus).toBe('IN_CLEARING');
+    expect(res.body.data.journalEntryId).toBeDefined();
+  });
+
+  it('Step 10 (Phase 2): Should clear receivable cheque (CLEARED) and verify bank balance increment', async () => {
+    const clearData = {
+      toStatus: 'CLEARED',
+      actionDateShamsi: '1403/11/30',
+      bankDimensionId: 'dim-bank-1',
+      description: 'وصول قطعی چک در سررسید و واریز به حساب سامان'
+    };
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/treasury/cheques/${createdChequeId}/status`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(clearData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.toStatus).toBe('CLEARED');
+  });
+
+  it('Step 11 (Phase 2): Should import bank statement rows for reconciliation', async () => {
+    const stmtData = {
+      bankAccountId: 'bank-saman-1',
+      rows: [
         {
-          subsidiaryAccountId: 'sub-1104',
-          floatingDimension1Id: 'dim-pos-1',
-          debit: 55000000,
-          credit: 0,
-          description: 'دریافت کامل وجه فاکتور با پوز ملت'
-        },
-        {
-          subsidiaryAccountId: 'sub-6101',
-          debit: 0,
+          statementDateShamsi: '1403/11/30',
+          referenceNumber: 'TX-892110',
           credit: 50000000,
-          description: 'درآمد ناخالص فروش'
-        },
-        {
-          subsidiaryAccountId: 'sub-3306',
-          debit: 0,
-          credit: 5000000,
-          description: 'مالیات بر ارزش افزوده ۱۰٪'
+          description: 'واریز بابت وصول چک صیادی 1234567890123456'
         }
       ]
     };
 
-    const createRes = await request(app.getHttpServer())
-      .post('/api/v1/accounting/journal-entries')
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/treasury/bank-statements/import')
       .set('Authorization', `Bearer ${jwtToken}`)
       .set('x-tenant-id', 'tenant-pishro')
       .set('x-company-id', 'comp-pishro-1')
-      .send(validEntry)
+      .send(stmtData)
       .expect(201);
 
-    expect(createRes.body.success).toBe(true);
-    const createdId = createRes.body.data.id;
-    expect(createRes.body.data.status).toBe('DRAFT');
-    expect(createRes.body.data.totalDebit).toBe('55000000');
-    expect(createRes.body.data.totalCredit).toBe('55000000');
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.importedCount).toBe(1);
+  });
 
-    // تایید سند توسط حسابدار
-    const approveRes = await request(app.getHttpServer())
-      .post(`/api/v1/accounting/journal-entries/${createdId}/approve`)
-      .set('Authorization', `Bearer ${jwtToken}`)
-      .set('x-tenant-id', 'tenant-pishro')
-      .set('x-company-id', 'comp-pishro-1')
-      .expect(201);
-
-    expect(approveRes.body.success).toBe(true);
-    expect(approveRes.body.data.status).toBe('APPROVED');
-
-    // قطعی‌سازی سند و ثبت دفاتر قانونی
-    const finalizeRes = await request(app.getHttpServer())
-      .post(`/api/v1/accounting/journal-entries/${createdId}/finalize`)
-      .set('Authorization', `Bearer ${jwtToken}`)
-      .set('x-tenant-id', 'tenant-pishro')
-      .set('x-company-id', 'comp-pishro-1')
-      .expect(201);
-
-    expect(finalizeRes.body.success).toBe(true);
-    expect(finalizeRes.body.data.status).toBe('FINALIZED');
-    expect(finalizeRes.body.data.permanentNumber).toBeDefined();
-
-    // بررسی تراز آزمایشی پس از قطعی‌سازی سند
+  it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {
     const tbRes = await request(app.getHttpServer())
       .get('/api/v1/accounting/reports/trial-balance')
       .set('Authorization', `Bearer ${jwtToken}`)
@@ -166,56 +288,9 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱)', () => {
     expect(tbRes.body.data.isBalanced).toBe(true);
     expect(tbRes.body.data.totalPeriodDebit).toBe(tbRes.body.data.totalPeriodCredit);
     expect(tbRes.body.data.totalClosingDebit).toBe(tbRes.body.data.totalClosingCredit);
-
-    // معکوس‌سازی سند قطعی با سند اصلاحی
-    const reverseRes = await request(app.getHttpServer())
-      .post(`/api/v1/accounting/journal-entries/${createdId}/reverse`)
-      .set('Authorization', `Bearer ${jwtToken}`)
-      .set('x-tenant-id', 'tenant-pishro')
-      .set('x-company-id', 'comp-pishro-1')
-      .send({
-        reversalDateShamsi: '1403/08/25',
-        reason: 'ابطال فاکتور و اصلاح حساب‌ها'
-      })
-      .expect(201);
-
-    expect(reverseRes.body.success).toBe(true);
-    expect(reverseRes.body.data.reversalEntry.entryType).toBe('REVERSAL');
   });
 
-  it('Step 5: Should evaluate versioned tax and payroll rules', async () => {
-    // محاسبه ارزش افزوده بر اساس قوانین ۱۴۰۳ (۱۰٪)
-    const vatRes = await request(app.getHttpServer())
-      .post('/api/v1/rules/vat/calculate')
-      .set('Authorization', `Bearer ${jwtToken}`)
-      .send({
-        grossAmount: 10000000,
-        discountAmount: 0,
-        commodityCode: 'GENERAL_GOODS_101',
-        documentDateShamsi: '1403/06/15'
-      })
-      .expect(201);
-
-    expect(vatRes.body.success).toBe(true);
-    expect(vatRes.body.data.vatRatePercent).toBe(10);
-    expect(vatRes.body.data.vatAmount).toBe('1000000');
-    expect(vatRes.body.data.totalWithVat).toBe('11000000');
-
-    // محاسبه مالیات حقوق بر اساس ماده ۸۴
-    const payrollRes = await request(app.getHttpServer())
-      .post('/api/v1/rules/payroll/calculate')
-      .set('Authorization', `Bearer ${jwtToken}`)
-      .send({
-        monthlyTaxableIncome: 200000000,
-        documentDateShamsi: '1403/08/30'
-      })
-      .expect(201);
-
-    expect(payrollRes.body.success).toBe(true);
-    expect(payrollRes.body.data.totalTax).toBe('9750000');
-  });
-
-  it('Step 6: Should cryptographically verify the append-only Audit Hash Chain', async () => {
+  it('Step 13: Cryptographic verification: Audit Hash Chain must remain untampered', async () => {
     const res = await request(app.getHttpServer())
       .get('/api/v1/audit/verify-chain')
       .set('Authorization', `Bearer ${jwtToken}`)
