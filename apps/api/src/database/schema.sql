@@ -853,4 +853,146 @@ CREATE INDEX IF NOT EXISTS idx_moadian_tax_id ON moadian_invoices(tax_id);
 CREATE INDEX IF NOT EXISTS idx_moadian_status ON moadian_invoices(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_moadian_outbox_status ON moadian_outbox_queue(status, next_retry_at);
 
+-- ==========================================================
+-- فاز ۵: POS آفلاین و ماژول فروشگاه
+-- ==========================================================
+
+-- ۲۷. پایانه‌های کارتخوان متصل به پوز (POS Terminals)
+CREATE TABLE IF NOT EXISTS pos_terminals (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    terminal_number TEXT NOT NULL,
+    serial_number TEXT,
+    psp_name TEXT NOT NULL, -- به‌پرداخت، سامان‌کیش، سداد، آپ
+    bank_account_id TEXT NOT NULL,
+    floating_dimension_id TEXT NOT NULL, -- تفصیلی شناور معین ۱۱۰۴ (وجوه در راه)
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+    FOREIGN KEY (floating_dimension_id) REFERENCES floating_dimensions(id)
+);
+
+-- ۲۸. شیفت‌های صندوق (POS Shifts)
+CREATE TABLE IF NOT EXISTS pos_shifts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    cash_desk_id TEXT NOT NULL,
+    pos_terminal_id TEXT,
+    cashier_user_id TEXT NOT NULL,
+    shift_number TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    closed_at TEXT,
+    status TEXT DEFAULT 'OPEN', -- OPEN, CLOSED
+    opening_cash_balance TEXT DEFAULT '0',
+    cash_breakdown_opening_json TEXT,
+    expected_cash_balance TEXT DEFAULT '0',
+    actual_cash_balance TEXT,
+    cash_discrepancy TEXT DEFAULT '0',
+    cash_breakdown_closing_json TEXT,
+    total_sales_count INTEGER DEFAULT 0,
+    total_sales_amount TEXT DEFAULT '0',
+    total_cash_sales TEXT DEFAULT '0',
+    total_pos_card_sales TEXT DEFAULT '0',
+    total_discount_amount TEXT DEFAULT '0',
+    total_vat_amount TEXT DEFAULT '0',
+    total_cogs_amount TEXT DEFAULT '0',
+    daily_journal_entry_id TEXT, -- پیوند به سند تجمیعی روزانه
+    cogs_journal_entry_id TEXT, -- پیوند به سند بهای تمام‌شده تجمیعی
+    discrepancy_journal_entry_id TEXT, -- سند کسری/فزونی صندوق
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (cash_desk_id) REFERENCES cash_desks(id),
+    FOREIGN KEY (pos_terminal_id) REFERENCES pos_terminals(id),
+    FOREIGN KEY (cashier_user_id) REFERENCES users(id)
+);
+
+-- ۲۹. برداشت و واریز نقدی در طول شیفت (Cash In / Cash Drop)
+CREATE TABLE IF NOT EXISTS pos_cash_movements (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    shift_id TEXT NOT NULL,
+    movement_type TEXT NOT NULL, -- CASH_DROP, CASH_IN, EXPENSE
+    amount TEXT NOT NULL,
+    date_shamsi TEXT NOT NULL,
+    description TEXT,
+    created_by_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (shift_id) REFERENCES pos_shifts(id) ON DELETE CASCADE
+);
+
+-- ۳۰. سفارش‌ها و فاکتورهای صندوق (POS Orders & Hold/Recall)
+CREATE TABLE IF NOT EXISTS pos_orders (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    warehouse_id TEXT NOT NULL,
+    shift_id TEXT NOT NULL,
+    cashier_user_id TEXT NOT NULL,
+    order_number TEXT NOT NULL,
+    date_shamsi TEXT NOT NULL,
+    status TEXT DEFAULT 'COMPLETED', -- HOLD, COMPLETED, CANCELLED, REFUNDED
+    customer_party_id TEXT,
+    hold_reference TEXT,
+    gross_amount TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    net_amount TEXT NOT NULL,
+    vat_amount TEXT DEFAULT '0',
+    grand_total TEXT NOT NULL,
+    cogs_total TEXT DEFAULT '0',
+    payment_method TEXT DEFAULT 'CASH', -- CASH, POS_CARD, MIXED, CREDIT
+    cash_amount TEXT DEFAULT '0',
+    pos_card_amount TEXT DEFAULT '0',
+    idempotency_key TEXT UNIQUE, -- تضمین عدم ثبت تکراری در سناریوهای قطعی اینترنت
+    is_offline_synced INTEGER DEFAULT 0,
+    offline_created_at TEXT,
+    moadian_tax_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
+    FOREIGN KEY (shift_id) REFERENCES pos_shifts(id)
+);
+
+-- ۳۱. اقلام سفارش صندوق
+CREATE TABLE IF NOT EXISTS pos_order_items (
+    id TEXT PRIMARY KEY,
+    pos_order_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    variant_id TEXT,
+    quantity TEXT NOT NULL,
+    unit_price TEXT NOT NULL,
+    total_price TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    net_amount TEXT NOT NULL,
+    vat_amount TEXT DEFAULT '0',
+    unit_cogs TEXT DEFAULT '0',
+    total_cogs TEXT DEFAULT '0',
+    is_weighted INTEGER DEFAULT 0,
+    weight_grams INTEGER,
+    barcode_scanned TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (pos_order_id) REFERENCES pos_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pos_shifts_status ON pos_shifts(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_pos_orders_shift ON pos_orders(shift_id, status);
+CREATE INDEX IF NOT EXISTS idx_pos_orders_idempotency ON pos_orders(idempotency_key);
+
+
 

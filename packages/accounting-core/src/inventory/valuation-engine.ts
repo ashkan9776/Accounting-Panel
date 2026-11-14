@@ -54,14 +54,14 @@ export class ValuationEngine {
       updatedFifoLayers.push({
         layerId,
         receiptDateShamsi,
-        originalQuantity: inQty.toFixed(0),
-        remainingQuantity: inQty.toFixed(0),
+        originalQuantity: inQty.toString(),
+        remainingQuantity: inQty.toString(),
         unitCost: inCost.toFixed(0)
       });
     }
 
     return {
-      newQuantity: newQty.toFixed(0),
+      newQuantity: newQty.toString(),
       newAverageCost: newAvgCost.toFixed(0),
       newTotalValue: newTotalValue.toFixed(0),
       updatedFifoLayers
@@ -103,12 +103,12 @@ export class ValuationEngine {
 
       return {
         cogs: {
-          consumedQuantity: outQty.toFixed(0),
+          consumedQuantity: outQty.toString(),
           totalCogsAmount: totalCogs.toFixed(0),
           unitCost: avgCost.toFixed(0),
           valuationMethodUsed: ValuationMethod.MOVING_AVERAGE
         },
-        newQuantity: newQty.toFixed(0),
+        newQuantity: newQty.toString(),
         newAverageCost: avgCost.toFixed(0),
         newTotalValue: newTotalValue.toFixed(0),
         updatedFifoLayers: currentState.fifoLayers || []
@@ -136,7 +136,7 @@ export class ValuationEngine {
         if (newLayerRemaining.greaterThan(0)) {
           updatedLayers.push({
             ...layer,
-            remainingQuantity: newLayerRemaining.toFixed(0)
+            remainingQuantity: newLayerRemaining.toString()
           });
         }
       }
@@ -153,13 +153,13 @@ export class ValuationEngine {
 
       return {
         cogs: {
-          consumedQuantity: outQty.toFixed(0),
+          consumedQuantity: outQty.toString(),
           totalCogsAmount: totalCogs.toFixed(0),
           unitCost: avgEffectiveCost.toFixed(0),
           valuationMethodUsed: ValuationMethod.FIFO,
           updatedFifoLayers: updatedLayers
         },
-        newQuantity: newQty.toFixed(0),
+        newQuantity: newQty.toString(),
         newAverageCost: avgEffectiveCost.toFixed(0),
         newTotalValue: newTotalVal.toFixed(0),
         updatedFifoLayers: updatedLayers

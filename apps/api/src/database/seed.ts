@@ -62,6 +62,11 @@ export async function runSeed() {
     DELETE FROM moadian_invoices;
     DELETE FROM moadian_unit_mappings;
     DELETE FROM moadian_settings;
+    DELETE FROM pos_order_items;
+    DELETE FROM pos_orders;
+    DELETE FROM pos_cash_movements;
+    DELETE FROM pos_shifts;
+    DELETE FROM pos_terminals;
   `);
   console.log('[Seed] Schema applied and tables initialized successfully.');
 
@@ -714,6 +719,61 @@ export async function runSeed() {
   );
 
   console.log('[Seed Phase 4] Moadian keys, settings and unit mappings seeded successfully.');
+
+  // ==========================================
+  // فاز ۵: پایانه کارتخوان POS و صندوق فروشگاهی
+  // ==========================================
+  await run(
+    `INSERT OR REPLACE INTO pos_terminals (
+      id, tenant_id, company_id, branch_id, code, title, terminal_number,
+      serial_number, psp_name, bank_account_id, floating_dimension_id, is_active, created_at
+    ) VALUES (?, ?, ?, ?, 'POS01', 'کارتخوان متصل به صندوق ونک', '89211045', 'SN-SAMAN-991', 'سامان‌کیش', 'bank-saman-1', 'dim-pos-1', 1, ?)`,
+    [
+      'pos-term-1',
+      tenantId,
+      companyId,
+      branchId,
+      now
+    ]
+  );
+
+  // کالای وزنی ترازویی
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, ?, 'unit-piece', '00105', 'گوشت ران گوساله ممتاز (وزنی)', 'GOODS', '2100105000000', 1, '0.00', 'MOVING_AVERAGE', '10', '200', '2400000', '1800000', 1, ?)`,
+    [
+      'prod-meat',
+      tenantId,
+      companyId,
+      'cat-digital', // or general category
+      now
+    ]
+  );
+
+  // موجودی اولیه گوشت در انبار اصلی برای تست ترازو
+  await run(
+    `INSERT OR REPLACE INTO stock_ledger_entries (
+      id, tenant_id, company_id, warehouse_id, product_id, variant_id,
+      document_type, document_id, document_number, date_shamsi,
+      in_quantity, in_unit_cost, in_total_cost,
+      out_quantity, out_unit_cost, out_total_cost,
+      balance_quantity, balance_unit_cost, balance_total_cost,
+      created_at
+    ) VALUES (
+      'stk-init-meat', ?, ?, 'wh-main', 'prod-meat', NULL,
+      'INITIAL_BALANCE', 'init-meat', 'INIT-MEAT-01', '1403/01/01',
+      '100', '1800000', '180000000',
+      '0', '0', '0',
+      '100', '1800000', '180000000',
+      ?
+    )`,
+    [tenantId, companyId, now]
+  );
+
+  console.log('[Seed Phase 5] POS terminal and weight scale product seeded successfully.');
 
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();

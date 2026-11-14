@@ -13,6 +13,9 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
   let createdCountId: string;
   let createdMoadianInvoiceId: string;
   let createdTaxId: string;
+  let createdShiftId: string;
+  let createdPosOrderId: string;
+  let createdHeldOrderId: string;
 
   beforeAll(async () => {
     await runSeed();
@@ -700,6 +703,310 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     const portalOnly = res.body.data.find((r: any) => r.taxId === 'A123B40000000000000999');
     expect(portalOnly).toBeDefined();
     expect(portalOnly.status).toBe('ONLY_IN_PORTAL');
+  });
+
+  // ==========================================
+  // آزمون‌های فاز ۵: POS آفلاین و ماژول فروشگاهی
+  // ==========================================
+
+  it('Step 26 (Phase 5): Should list POS terminals and open a cashier shift with opening cash', async () => {
+    // استعلام پایانه‌های کارتخوان فعال
+    const termRes = await request(app.getHttpServer())
+      .get('/api/v1/pos/terminals')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(termRes.body.success).toBe(true);
+    expect(termRes.body.data.length).toBeGreaterThanOrEqual(1);
+    const terminal = termRes.body.data.find((t: any) => t.id === 'pos-term-1');
+    expect(terminal).toBeDefined();
+    expect(terminal.code).toBe('POS01');
+
+    // باز کردن شیفت با ۵ میلیون ریال پول خرد اول وقت
+    const openRes = await request(app.getHttpServer())
+      .post('/api/v1/pos/shifts/open')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        cashDeskId: 'cash-desk-1',
+        posTerminalId: 'pos-term-1',
+        openingCashBalance: 5000000,
+        cashBreakdownOpening: { notes_500000: 10 }
+      })
+      .expect(201);
+
+    expect(openRes.body.success).toBe(true);
+    createdShiftId = openRes.body.data.id;
+    expect(openRes.body.data.status).toBe('OPEN');
+    expect(openRes.body.data.opening_cash_balance).toBe('5000000');
+    expect(openRes.body.data.expected_cash_balance).toBe('5000000');
+    expect(openRes.body.data.shift_number).toContain('SHF-');
+
+    // استعلام شیفت فعال کاربر
+    const activeRes = await request(app.getHttpServer())
+      .get('/api/v1/pos/shifts/active')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(activeRes.body.success).toBe(true);
+    expect(activeRes.body.data.id).toBe(createdShiftId);
+  });
+
+  it('Step 27 (Phase 5): Should process fast POS order with weight scale barcode and deduct warehouse stock', async () => {
+    // بارکد ترازوی وزنی: ۲۱ (پیشوند) + ۰۰۱۰۵ (کد گوشت) + ۰۱۵۰۰ (۱.۵۰۰ کیلوگرم) + ۳ (رقم کنترل)
+    // قیمت هر کیلو گوشت: ۲,۴۰۰,۰۰۰ ریال -> ۱.۵ کیلو = ۳,۶۰۰,۰۰۰ ریال (معاف از مالیات)
+    const orderData = {
+      shiftId: createdShiftId,
+      warehouseId: 'wh-main',
+      paymentMethod: 'POS_CARD',
+      items: [
+        {
+          barcode: '2100105015003'
+        }
+      ]
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/pos/orders')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(orderData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    createdPosOrderId = res.body.data.id;
+    expect(res.body.data.status).toBe('COMPLETED');
+    expect(res.body.data.grandTotal).toBe('3600000');
+    expect(res.body.data.posCardAmount).toBe('3600000');
+    expect(res.body.data.items).toHaveLength(1);
+    expect(Boolean(res.body.data.items[0].isWeighted)).toBe(true);
+    expect(res.body.data.items[0].weightGrams).toBe(1500);
+    expect(res.body.data.items[0].quantity).toBe('1.500');
+    // بهای تمام شده ۱.۵ کیلو در نرخ خرید ۱,۸۰۰,۰۰۰ = ۲,۷۰۰,۰۰۰ ریال
+    expect(res.body.data.cogsTotal).toBe('2700000');
+
+    // استعلام فاکتور حرارتی با حروف فارسی
+    const receiptRes = await request(app.getHttpServer())
+      .get(`/api/v1/pos/orders/${createdPosOrderId}/receipt`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(receiptRes.body.success).toBe(true);
+    expect(receiptRes.body.data.grandTotalWords).toContain('سه میلیون و ششصد هزار ریال');
+
+    // بررسی کاردکس انبار برای کالای گوشت: موجودی اولیه ۱۰۰ منهای ۱.۵ = ۹۸.۵ کیلوگرم
+    const kardexRes = await request(app.getHttpServer())
+      .get('/api/v1/inventory/kardex?warehouseId=wh-main&productId=prod-meat')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(kardexRes.body.success).toBe(true);
+    expect(kardexRes.body.data.length).toBe(2);
+    const latest = kardexRes.body.data[1];
+    expect(latest.out_quantity).toBe('1.5');
+    expect(latest.balance_quantity).toBe('98.5');
+  });
+
+  it('Step 28 (Phase 5): Should handle suspended cart (Hold) and recall to complete payment', async () => {
+    // ثبت سفارش معلق (HOLD) برای مشتری که کارت خود را فراموش کرده
+    const holdData = {
+      shiftId: createdShiftId,
+      warehouseId: 'wh-main',
+      status: 'HOLD',
+      holdReference: 'مشتری میز ۴ - در حال انتخاب لوازم جانبی',
+      items: [
+        {
+          productId: 'prod-laptop',
+          quantity: 1,
+          unitPrice: 350000000
+        }
+      ]
+    };
+
+    const holdRes = await request(app.getHttpServer())
+      .post('/api/v1/pos/orders')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(holdData)
+      .expect(201);
+
+    expect(holdRes.body.success).toBe(true);
+    createdHeldOrderId = holdRes.body.data.id;
+    expect(holdRes.body.data.status).toBe('HOLD');
+
+    // استعلام لیست سبدهای خرید معلق
+    const listHeldRes = await request(app.getHttpServer())
+      .get('/api/v1/pos/orders/hold')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(listHeldRes.body.success).toBe(true);
+    expect(listHeldRes.body.data.some((o: any) => o.id === createdHeldOrderId)).toBe(true);
+
+    // بازیابی (Recall) و تسویه نقدی سبد معلق
+    // لپتاپ: ۳۵۰ میلیون + ۱۰٪ ارزش افزوده = ۳۸۵ میلیون ریال
+    const completeRes = await request(app.getHttpServer())
+      .post(`/api/v1/pos/orders/${createdHeldOrderId}/recall-complete`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        paymentMethod: 'CASH'
+      })
+      .expect(201);
+
+    expect(completeRes.body.success).toBe(true);
+    expect(completeRes.body.data.status).toBe('COMPLETED');
+    expect(completeRes.body.data.cash_amount).toBe('385000000');
+    expect(completeRes.body.data.grand_total).toBe('385000000');
+  });
+
+  it('Step 29 (Phase 5): Should sync offline POS batch orders and enforce idempotency key protection', async () => {
+    const offlineBatch = {
+      orders: [
+        {
+          shiftId: createdShiftId,
+          warehouseId: 'wh-main',
+          idempotencyKey: 'idemp-pos-offline-001',
+          paymentMethod: 'CASH',
+          items: [
+            {
+              productId: 'prod-mouse',
+              quantity: 2,
+              unitPrice: 15000000
+            }
+          ]
+        }
+      ]
+    };
+
+    // ارسال بار اول: ثبت سفارش آفلاین
+    const syncRes = await request(app.getHttpServer())
+      .post('/api/v1/pos/orders/sync-offline')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(offlineBatch)
+      .expect(201);
+
+    expect(syncRes.body.success).toBe(true);
+    expect(syncRes.body.data.syncedCount).toBe(1);
+    // ۲ عدد موس به مبلغ ۱۵ میلیون + ۱۰٪ ارزش افزوده = ۳۳,۰۰۰,۰۰۰ ریال
+    expect(syncRes.body.data.orders[0].grandTotal).toBe('33000000');
+
+    // ارسال مجدد همان سفارش به دلیل قطعی موقت اینترنت (Idempotency Test)
+    const retryRes = await request(app.getHttpServer())
+      .post('/api/v1/pos/orders/sync-offline')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(offlineBatch)
+      .expect(201);
+
+    expect(retryRes.body.success).toBe(true);
+    // سفارش بدون ثبت مجدد و بدون کسر تکراری انبار بازگردانده می‌شود
+    expect(retryRes.body.data.orders[0].id).toBe(syncRes.body.data.orders[0].id);
+  });
+
+  it('Step 30 (Phase 5): Should record cash movements (Cash In / Cash Drop) during shift', async () => {
+    // ۱. تخلیه نقدی مبالغ مازاد صندوق به گاوصندوق اصلی (Cash Drop)
+    const dropRes = await request(app.getHttpServer())
+      .post(`/api/v1/pos/shifts/${createdShiftId}/cash-movement`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        movementType: 'CASH_DROP',
+        amount: 2000000,
+        description: 'تخلیه نقدی مازاد به گاوصندوق امن'
+      })
+      .expect(201);
+
+    expect(dropRes.body.success).toBe(true);
+    expect(dropRes.body.data.movementType).toBe('CASH_DROP');
+    expect(dropRes.body.data.amount).toBe('2000000');
+
+    // ۲. تزریق مجدد اسکناس ریز به صندوق (Cash In)
+    const inRes = await request(app.getHttpServer())
+      .post(`/api/v1/pos/shifts/${createdShiftId}/cash-movement`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        movementType: 'CASH_IN',
+        amount: 500000,
+        description: 'تزریق پول خرد ۵۰ هزار ریالی'
+      })
+      .expect(201);
+
+    expect(inRes.body.success).toBe(true);
+    expect(inRes.body.data.movementType).toBe('CASH_IN');
+  });
+
+  it('Step 31 (Phase 5): Should generate interim X-Report without closing the cashier shift', async () => {
+    const xRes = await request(app.getHttpServer())
+      .get(`/api/v1/pos/shifts/${createdShiftId}/x-report`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(xRes.body.success).toBe(true);
+    expect(xRes.body.data.reportType).toBe('X_REPORT');
+    expect(xRes.body.data.status).toBe('OPEN');
+    // ۳ سفارش قطعی: گوشت (پوز)، لپ‌تاپ ریکال‌شده (نقد)، موس آفلاین (نقد)
+    expect(xRes.body.data.totalSalesCount).toBe(3);
+    // کارتخوان = ۳,۶۰۰,۰۰۰ ریال
+    expect(xRes.body.data.totalPosCardSales).toBe('3600000');
+    // نقدی = ۳۸۵,۰۰۰,۰۰۰ + ۳۳,۰۰۰,۰۰۰ = ۴۱۸,۰۰۰,۰۰۰ ریال
+    expect(xRes.body.data.totalCashSales).toBe('418000000');
+    // مانده نقد انتظاری در صندوق:
+    // ۵,۰۰۰,۰۰۰ (اولیه) + ۴۱۸,۰۰۰,۰۰۰ (فروش نقدی) - ۲,۰۰۰,۰۰۰ (تخلیه) + ۵۰۰,۰۰۰ (واریز خرد) = ۴۲۱,۵۰۰,۰۰۰ ریال
+    expect(xRes.body.data.expectedCashInDrawer).toBe('421500000');
+  });
+
+  it('Step 32 (Phase 5): Should close shift, print Z-Report and post Daily Consolidated, COGS & Discrepancy Entries', async () => {
+    // شمارش فیزیکی نقدینگی صندوقدار: ۴۲۱,۴۵۰,۰۰۰ ریال (۵۰ هزار ریال کسری صندوق نسبت به مانده انتظاری ۴۲۱,۵۰۰,۰۰۰)
+    const closeRes = await request(app.getHttpServer())
+      .post(`/api/v1/pos/shifts/${createdShiftId}/close`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        dateShamsi: '1403/11/15',
+        actualCashBalance: '421450000',
+        cashBreakdownClosing: {
+          notes_500000: 842,
+          notes_100000: 4,
+          notes_50000: 1
+        }
+      })
+      .expect(201);
+
+    expect(closeRes.body.success).toBe(true);
+    expect(closeRes.body.data.reportType).toBe('Z_REPORT');
+    expect(closeRes.body.data.status).toBe('CLOSED');
+    expect(closeRes.body.data.cashDiscrepancy).toBe('-50000');
+
+    // سند تجمیعی روزانه فروش صادر شده باشد
+    expect(closeRes.body.data.dailyJournalEntryId).toBeDefined();
+    // سند بهای تمام شده کالای فروش رفته صادر شده باشد
+    expect(closeRes.body.data.cogsJournalEntryId).toBeDefined();
+    // سند کسری صندوق صادر شده باشد
+    expect(closeRes.body.data.discrepancyJournalEntryId).toBeDefined();
   });
 
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {

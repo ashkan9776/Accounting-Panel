@@ -12,6 +12,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { MoadianModule } from './modules/moadian/moadian.module';
+import { PosModule } from './modules/pos/pos.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { MoadianModule } from './modules/moadian/moadian.module';
     PurchasesModule,
     SalesModule,
     MoadianModule,
+    PosModule,
     RulesModule,
     AuditModule
   ],
