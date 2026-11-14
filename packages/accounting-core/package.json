@@ -1,0 +1,25 @@
+{
+  "name": "@accounting/core",
+  "version": "1.0.0",
+  "description": "هسته مستقل و تغییرناپذیر حسابداری، قوانین نسخه‌دار و محاسبات مالی ایران",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --runInBand",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "decimal.js": "^10.4.3",
+    "jalaali-js": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/jalaali-js": "^1.2.0",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "fast-check": "^3.23.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}
