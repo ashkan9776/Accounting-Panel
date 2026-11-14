@@ -30,3 +30,6 @@ export * from './moadian/transport-adapter';
 export * from './pos/types';
 export * from './pos/barcode-scale-parser';
 export * from './pos/pos-posting-engine';
+
+export * from './restaurant';
+

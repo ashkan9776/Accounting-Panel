@@ -994,5 +994,202 @@ CREATE INDEX IF NOT EXISTS idx_pos_shifts_status ON pos_shifts(tenant_id, status
 CREATE INDEX IF NOT EXISTS idx_pos_orders_shift ON pos_orders(shift_id, status);
 CREATE INDEX IF NOT EXISTS idx_pos_orders_idempotency ON pos_orders(idempotency_key);
 
+-- ====================================================================
+-- فاز ۶: ماژول رستوران، کافی‌شاپ، منو، دستور پخت BOM، سالن، KDS و پیک
+-- ====================================================================
+
+-- ۳۲. بخش‌های سالن رستوران (Salon Sections)
+CREATE TABLE IF NOT EXISTS restaurant_sections (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+-- ۳۳. میزهای سالن رستوران (Tables)
+CREATE TABLE IF NOT EXISTS restaurant_tables (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    section_id TEXT NOT NULL,
+    table_number TEXT NOT NULL,
+    title TEXT NOT NULL,
+    capacity INTEGER DEFAULT 4,
+    status TEXT DEFAULT 'VACANT', -- VACANT, OCCUPIED, BILL_PRINTED, RESERVED, CLEANING
+    merged_with_table_id TEXT,
+    current_order_id TEXT,
+    qr_code_token TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (section_id) REFERENCES restaurant_sections(id)
+);
+
+-- ۳۴. دسته‌بندی منوی رستوران (Menu Categories)
+CREATE TABLE IF NOT EXISTS restaurant_menu_categories (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    icon TEXT,
+    display_order INTEGER DEFAULT 0,
+    kitchen_station TEXT DEFAULT 'HOT_KITCHEN', -- HOT_KITCHEN, COLD_KITCHEN, BAR_CAFE, BAKERY_DESSERT
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+-- ۳۵. دستور پخت و فرمول ساخت غذا (Recipe / BOM)
+CREATE TABLE IF NOT EXISTS restaurant_recipes (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    menu_product_id TEXT NOT NULL,
+    yield_quantity TEXT DEFAULT '1',
+    notes TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (menu_product_id) REFERENCES products(id)
+);
+
+-- ۳۶. اقلام و مواد اولیه دستور پخت (Recipe Ingredients)
+CREATE TABLE IF NOT EXISTS restaurant_recipe_items (
+    id TEXT PRIMARY KEY,
+    recipe_id TEXT NOT NULL,
+    raw_product_id TEXT NOT NULL,
+    quantity TEXT NOT NULL,
+    waste_percentage TEXT DEFAULT '0',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (recipe_id) REFERENCES restaurant_recipes(id) ON DELETE CASCADE,
+    FOREIGN KEY (raw_product_id) REFERENCES products(id)
+);
+
+-- ۳۷. تیکت‌های نمایشگر آشپزخانه (KDS Tickets)
+CREATE TABLE IF NOT EXISTS restaurant_kds_tickets (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    restaurant_order_id TEXT NOT NULL,
+    ticket_number TEXT NOT NULL,
+    station TEXT NOT NULL, -- HOT_KITCHEN, COLD_KITCHEN, BAR_CAFE, BAKERY_DESSERT
+    status TEXT DEFAULT 'QUEUED', -- QUEUED, PREPARING, READY, SERVED
+    table_number TEXT,
+    started_at TEXT,
+    ready_at TEXT,
+    served_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+-- ۳۸. سفارشات رستوران (Restaurant Orders)
+CREATE TABLE IF NOT EXISTS restaurant_orders (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    shift_id TEXT,
+    order_number TEXT NOT NULL,
+    date_shamsi TEXT NOT NULL,
+    channel TEXT DEFAULT 'DINE_IN', -- DINE_IN, TAKEAWAY, DELIVERY, ONLINE_AGGREGATOR
+    status TEXT DEFAULT 'OPEN', -- OPEN, KITCHEN_IN_PROGRESS, READY_TO_SERVE, SERVED, PAID, CANCELLED
+    table_id TEXT,
+    guest_count INTEGER DEFAULT 1,
+    waiter_user_id TEXT,
+    customer_party_id TEXT,
+    notes TEXT,
+    gross_amount TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    service_charge_amount TEXT DEFAULT '0',
+    vat_amount TEXT DEFAULT '0',
+    grand_total TEXT NOT NULL,
+    food_cost_total TEXT DEFAULT '0',
+    settlement_method TEXT DEFAULT 'CASH', -- CASH, POS_CARD, MIXED, ONLINE_AGGREGATOR
+    cash_amount TEXT DEFAULT '0',
+    pos_card_amount TEXT DEFAULT '0',
+    aggregator_receivable_amount TEXT DEFAULT '0',
+    journal_entry_id TEXT,
+    cogs_journal_entry_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (table_id) REFERENCES restaurant_tables(id),
+    FOREIGN KEY (waiter_user_id) REFERENCES users(id),
+    FOREIGN KEY (customer_party_id) REFERENCES parties(id)
+);
+
+-- ۳۹. اقلام سفارش رستوران (Order Items)
+CREATE TABLE IF NOT EXISTS restaurant_order_items (
+    id TEXT PRIMARY KEY,
+    restaurant_order_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    quantity TEXT NOT NULL,
+    unit_price TEXT NOT NULL,
+    total_price TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    net_amount TEXT NOT NULL,
+    vat_amount TEXT DEFAULT '0',
+    food_cost_amount TEXT DEFAULT '0',
+    modifiers_json TEXT,
+    kitchen_station TEXT DEFAULT 'HOT_KITCHEN',
+    kds_ticket_id TEXT,
+    item_status TEXT DEFAULT 'QUEUED', -- QUEUED, PREPARING, READY, SERVED, CANCELLED
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (restaurant_order_id) REFERENCES restaurant_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    FOREIGN KEY (kds_ticket_id) REFERENCES restaurant_kds_tickets(id)
+);
+
+-- ۴۰. پیک و دلیوری سفارشات بیرون‌بر رستوران (Deliveries & Couriers)
+CREATE TABLE IF NOT EXISTS restaurant_deliveries (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    restaurant_order_id TEXT NOT NULL,
+    courier_party_id TEXT,
+    status TEXT DEFAULT 'PENDING_ASSIGNMENT', -- PENDING_ASSIGNMENT, DISPATCHED, DELIVERED, RETURNED
+    customer_name TEXT NOT NULL,
+    customer_phone TEXT NOT NULL,
+    delivery_address TEXT NOT NULL,
+    delivery_fee TEXT DEFAULT '0',
+    dispatched_at TEXT,
+    delivered_at TEXT,
+    cash_collected TEXT DEFAULT '0',
+    pos_card_collected TEXT DEFAULT '0',
+    is_settled INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (restaurant_order_id) REFERENCES restaurant_orders(id),
+    FOREIGN KEY (courier_party_id) REFERENCES parties(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rest_tables_status ON restaurant_tables(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_rest_orders_status ON restaurant_orders(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_rest_kds_station ON restaurant_kds_tickets(tenant_id, station, status);
+
+
 
 

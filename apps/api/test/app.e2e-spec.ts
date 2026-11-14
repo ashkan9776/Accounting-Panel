@@ -16,6 +16,10 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
   let createdShiftId: string;
   let createdPosOrderId: string;
   let createdHeldOrderId: string;
+  let createdRestaurantOrderId: string;
+  let createdDeliveryOrderId: string;
+  let createdKdsHotTicketId: string;
+  let createdDeliveryId: string;
 
   beforeAll(async () => {
     await runSeed();
@@ -1007,6 +1011,390 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     expect(closeRes.body.data.cogsJournalEntryId).toBeDefined();
     // سند کسری صندوق صادر شده باشد
     expect(closeRes.body.data.discrepancyJournalEntryId).toBeDefined();
+  });
+
+  // ==========================================
+  // آزمون‌های فاز ۶: ماژول رستوران، کافی‌شاپ، منو، دستور پخت، میزها، KDS و پیک
+  // ==========================================
+
+  it('Step 33 (Phase 6): Should list restaurant sections, tables, and toggle table reservation', async () => {
+    // ۱. استعلام بخش‌های سالن
+    const secRes = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/sections')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(secRes.body.success).toBe(true);
+    expect(secRes.body.data.length).toBeGreaterThanOrEqual(2);
+    expect(secRes.body.data.some((s: any) => s.code === 'SEC-MAIN')).toBe(true);
+
+    // ۲. استعلام میزها
+    const tblRes = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/tables')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(tblRes.body.success).toBe(true);
+    expect(tblRes.body.data.length).toBeGreaterThanOrEqual(3);
+    const table1 = tblRes.body.data.find((t: any) => t.id === 'tbl-01');
+    expect(table1).toBeDefined();
+    expect(table1.status).toBe('VACANT');
+
+    // ۳. تغییر موقت به رزرو و بازگشت به خالی
+    const resRes = await request(app.getHttpServer())
+      .post('/api/v1/restaurant/tables/tbl-01/status')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({ status: 'RESERVED' })
+      .expect(201);
+
+    expect(resRes.body.data.status).toBe('RESERVED');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/restaurant/tables/tbl-01/status')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({ status: 'VACANT' })
+      .expect(201);
+  });
+
+  it('Step 34 (Phase 6): Should merge two adjacent tables (Merge Tables) for a large group', async () => {
+    const mergeRes = await request(app.getHttpServer())
+      .post('/api/v1/restaurant/tables/merge')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        primaryTableId: 'tbl-01',
+        secondaryTableId: 'tbl-02'
+      })
+      .expect(201);
+
+    expect(mergeRes.body.success).toBe(true);
+
+    // بررسی میز ثانویه
+    const checkRes = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/tables')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    const tbl2 = checkRes.body.data.find((t: any) => t.id === 'tbl-02');
+    expect(tbl2.merged_with_table_id).toBe('tbl-01');
+    expect(tbl2.status).toBe('OCCUPIED');
+  });
+
+  it('Step 35 (Phase 6): Should calculate recipe raw materials, Food Cost percentage, and analyze Menu Engineering', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/recipes/prod-pizza-pep/analysis?isPopular=true')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.sellPrice).toBe('1800000');
+    // بهای تمام شده محاسبه شده مواد اولیه پیتزا پپرونی: ۴۹۳,۴۰۰ ریال
+    expect(res.body.data.foodCostAmount).toBe('493400');
+    // درصد Food Cost: ۲۷.۴۱٪
+    expect(res.body.data.analysis.foodCostPercentage).toBe('27.41');
+    // طبقه مهندسی منو: STAR (سود بالا + محبوبیت بالا)
+    expect(res.body.data.analysis.category).toBe('STAR');
+  });
+
+  it('Step 36 (Phase 6): Should create Dine-In restaurant order with KDS tickets distributed to stations', async () => {
+    // سفارش سالن: ۲ پیتزا پپرونی (آشپزخانه گرم) + ۲ قهوه اسپرسو (بار کافه)
+    const orderData = {
+      channel: 'DINE_IN',
+      tableId: 'tbl-01',
+      guestCount: 4,
+      notes: 'پیتزاها برشته و قهوه‌ها بعد از غذا سرو شود',
+      items: [
+        {
+          productId: 'prod-pizza-pep',
+          quantity: 2
+        },
+        {
+          productId: 'prod-espresso',
+          quantity: 2
+        }
+      ]
+    };
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/restaurant/orders')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send(orderData)
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    createdRestaurantOrderId = res.body.data.id;
+    expect(res.body.data.channel).toBe('DINE_IN');
+    expect(res.body.data.tableNumber).toBe('T01');
+
+    // مبالغ:
+    // ناخالص غذا: (۲ * ۱,۸۰۰,۰۰۰) + (۲ * ۴۵۰,۰۰۰) = ۴,۵۰۰,۰۰۰ ریال
+    expect(res.body.data.grossAmount).toBe('4500000');
+    // حق سرویس سالن ۵٪: ۲۲۵,۰۰۰ ریال
+    expect(res.body.data.serviceChargeAmount).toBe('225000');
+    // ارزش افزوده ۱۰٪: ۴۵۰,۰۰۰ ریال
+    expect(res.body.data.vatAmount).toBe('450000');
+    // مبلغ کل فاکتور = ۴,۵۰۰,۰۰۰ + ۲۲۵,۰۰۰ + ۴۵۰,۰۰۰ = ۵,۱۷۵,۰۰۰ ریال
+    expect(res.body.data.grandTotal).toBe('5175000');
+
+    // تیکت‌های آشپزخانه KDS
+    expect(res.body.data.kdsTickets).toHaveLength(2);
+    const hotTicket = res.body.data.kdsTickets.find((t: any) => t.station === 'HOT_KITCHEN');
+    const barTicket = res.body.data.kdsTickets.find((t: any) => t.station === 'BAR_CAFE');
+    expect(hotTicket).toBeDefined();
+    expect(barTicket).toBeDefined();
+    createdKdsHotTicketId = hotTicket.id;
+
+    // بررسی اشغال شدن میز ۱ در سالن
+    const tblRes = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/tables')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    const tbl1 = tblRes.body.data.find((t: any) => t.id === 'tbl-01');
+    expect(tbl1.status).toBe('OCCUPIED');
+    expect(tbl1.current_order_id).toBe(createdRestaurantOrderId);
+  });
+
+  it('Step 37 (Phase 6): Should update KDS kitchen tickets and transition order to READY_TO_SERVE', async () => {
+    // ۱. ایستگاه گرم: شروع پخت پیتزا (PREPARING)
+    const prepRes = await request(app.getHttpServer())
+      .post(`/api/v1/restaurant/kds/tickets/${createdKdsHotTicketId}/status`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({ status: 'PREPARING' })
+      .expect(201);
+
+    expect(prepRes.body.data.status).toBe('PREPARING');
+    expect(prepRes.body.data.startedAt).toBeDefined();
+
+    // ۲. ایستگاه گرم: اتمام پخت و اعلام آمادگی (READY)
+    const readyRes = await request(app.getHttpServer())
+      .post(`/api/v1/restaurant/kds/tickets/${createdKdsHotTicketId}/status`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({ status: 'READY' })
+      .expect(201);
+
+    expect(readyRes.body.data.status).toBe('READY');
+    expect(readyRes.body.data.readyAt).toBeDefined();
+
+    // استعلام تیکت‌های مانیتور آشپزخانه
+    const kdsListRes = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/kds/tickets?station=HOT_KITCHEN')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(kdsListRes.body.success).toBe(true);
+    expect(kdsListRes.body.data.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Step 38 (Phase 6): Should transfer order from Window Table to VIP Table (Move Table)', async () => {
+    // انتقال سفارش از میز ۱ به میز بزرگ VIP
+    const transferRes = await request(app.getHttpServer())
+      .post('/api/v1/restaurant/tables/transfer')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        fromTableId: 'tbl-01',
+        toTableId: 'tbl-vip'
+      })
+      .expect(201);
+
+    expect(transferRes.body.success).toBe(true);
+
+    // بررسی وضعیت میزها پس از انتقال
+    const checkTables = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/tables')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    const tbl1 = checkTables.body.data.find((t: any) => t.id === 'tbl-01');
+    const tblVip = checkTables.body.data.find((t: any) => t.id === 'tbl-vip');
+
+    expect(tbl1.status).toBe('VACANT');
+    expect(tbl1.current_order_id).toBeNull();
+
+    expect(tblVip.status).toBe('OCCUPIED');
+    expect(tblVip.current_order_id).toBe(createdRestaurantOrderId);
+  });
+
+  it('Step 39 (Phase 6): Should perform Split Bill calculation into 3 equal shares', async () => {
+    // تسهیم فاکتور ۵,۱۹۷,۵۰۰ ریالی بین ۳ نفر:
+    // ۵,۱۹۷,۵۰۰ / ۳ = ۱,۷۳۲,۵۰۰ ریال برای هر سهم
+    const splitRes = await request(app.getHttpServer())
+      .post(`/api/v1/restaurant/orders/${createdRestaurantOrderId}/split`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        method: 'EQUAL_PARTS',
+        parts: 3
+      })
+      .expect(201);
+
+    expect(splitRes.body.success).toBe(true);
+    expect(splitRes.body.data.partsCount).toBe(3);
+    expect(splitRes.body.data.shares).toHaveLength(3);
+    expect(splitRes.body.data.shares[0].amount).toBe('1725000');
+    expect(splitRes.body.data.shares[1].amount).toBe('1725000');
+    expect(splitRes.body.data.shares[2].amount).toBe('1725000');
+  });
+
+  it('Step 40 (Phase 6): Should settle Dine-In order, deduct raw materials from inventory, and post Sales & Food Cost Journal Entries', async () => {
+    // تسویه با کارتخوان سالن
+    const settleRes = await request(app.getHttpServer())
+      .post(`/api/v1/restaurant/orders/${createdRestaurantOrderId}/settle`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        settlementMethod: 'POS_CARD'
+      })
+      .expect(201);
+
+    expect(settleRes.body.success).toBe(true);
+    expect(settleRes.body.data.status).toBe('PAID');
+    expect(settleRes.body.data.grandTotal).toBe('5175000');
+    // سند دوبل فروش غذا
+    expect(settleRes.body.data.journalEntryId).toBeDefined();
+    // سند دوبل بهای تمام شده مواد اولیه (Food Cost)
+    expect(settleRes.body.data.cogsJournalEntryId).toBeDefined();
+
+    // بررسی آزادسازی میز VIP به وضعیت تمیزکاری (CLEANING)
+    const tblRes = await request(app.getHttpServer())
+      .get('/api/v1/restaurant/tables')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    const tblVip = tblRes.body.data.find((t: any) => t.id === 'tbl-vip');
+    expect(tblVip.status).toBe('CLEANING');
+
+    // بررسی کسر دقیق کاردکس انبار مواد اولیه:
+    // ۲ پیتزا: هر پیتزا ۲۰۰ گرم خمیر -> ۰.۴۰۰ کیلوگرم کسر از ۱۰۰ کیلو اولیه = ۹۹.۶۰۰ کیلوگرم
+    const doughKardex = await request(app.getHttpServer())
+      .get('/api/v1/inventory/kardex?warehouseId=wh-main&productId=raw-dough')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(doughKardex.body.success).toBe(true);
+    expect(doughKardex.body.data.length).toBe(2);
+    const latestDough = doughKardex.body.data[1];
+    expect(latestDough.out_quantity).toBe('0.400');
+    expect(Number(latestDough.balance_quantity)).toBe(99.6);
+  });
+
+  it('Step 41 (Phase 6): Should process Delivery order, assign courier, complete delivery and settle courier cash', async () => {
+    // ۱. ثبت سفارش بیرون‌بر / دلیوری: ۱ پیتزا پپرونی (۱,۸۰۰,۰۰۰ + ۱۰٪ ارزش افزوده = ۱,۹۸۰,۰۰۰ ریال)
+    const delOrderRes = await request(app.getHttpServer())
+      .post('/api/v1/restaurant/orders')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        channel: 'DELIVERY',
+        items: [
+          {
+            productId: 'prod-pizza-pep',
+            quantity: 1
+          }
+        ]
+      })
+      .expect(201);
+
+    expect(delOrderRes.body.success).toBe(true);
+    createdDeliveryOrderId = delOrderRes.body.data.id;
+    expect(delOrderRes.body.data.grandTotal).toBe('1980000');
+
+    // ۲. ایجاد ماموریت دلیوری با هزینه ارسال ۳۰۰,۰۰۰ ریال
+    const delMissionRes = await request(app.getHttpServer())
+      .post('/api/v1/restaurant/deliveries')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        orderId: createdDeliveryOrderId,
+        customerName: 'مهندس سهرابی',
+        customerPhone: '09129998877',
+        deliveryAddress: 'تهران، خیابان ملاصدرا، پلاک ۲۰، واحد ۴',
+        deliveryFee: 300000
+      })
+      .expect(201);
+
+    expect(delMissionRes.body.success).toBe(true);
+    createdDeliveryId = delMissionRes.body.data.id;
+    expect(delMissionRes.body.data.status).toBe('PENDING_ASSIGNMENT');
+
+    // ۳. تخصیص پیک موتوری رستوران (آقای رضا مرادی)
+    const assignRes = await request(app.getHttpServer())
+      .post(`/api/v1/restaurant/deliveries/${createdDeliveryId}/assign`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        courierPartyId: 'party-courier-1'
+      })
+      .expect(201);
+
+    expect(assignRes.body.success).toBe(true);
+    expect(assignRes.body.data.status).toBe('DISPATCHED');
+
+    // ۴. ثبت تحویل سفارش درب منزل و وصول نقدینگی (۱,۹۸۰,۰۰۰ غذا + ۳۰۰,۰۰۰ هزینه پیک = ۲,۲۸۰,۰۰۰ ریال)
+    const compDelRes = await request(app.getHttpServer())
+      .post(`/api/v1/restaurant/deliveries/${createdDeliveryId}/complete`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        cashCollected: 2280000
+      })
+      .expect(201);
+
+    expect(compDelRes.body.success).toBe(true);
+    expect(compDelRes.body.data.status).toBe('DELIVERED');
+    expect(compDelRes.body.data.cashCollected).toBe('2280000');
+
+    // ۵. تسویه حساب پایان روز پیک با صندوق رستوران
+    const settleCourierRes = await request(app.getHttpServer())
+      .post('/api/v1/restaurant/deliveries/settle-courier')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        courierPartyId: 'party-courier-1'
+      })
+      .expect(201);
+
+    expect(settleCourierRes.body.success).toBe(true);
+    expect(settleCourierRes.body.data.settledCount).toBe(1);
+    expect(settleCourierRes.body.data.totalCashToHandover).toBe('2280000');
   });
 
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {

@@ -775,6 +775,162 @@ export async function runSeed() {
 
   console.log('[Seed Phase 5] POS terminal and weight scale product seeded successfully.');
 
+  // ==========================================
+  // فاز ۶: ماژول رستوران، کافی‌شاپ، منو، دستور پخت، میزها و پیک
+  // ==========================================
+  console.log('[Seed Phase 6] Seeding Restaurant sections, tables, categories, recipes and raw ingredients...');
+
+  // ۱. بخش‌های سالن رستوران
+  await run(
+    `INSERT OR REPLACE INTO restaurant_sections (id, tenant_id, company_id, branch_id, code, title, description, created_at)
+     VALUES (?, ?, ?, ?, 'SEC-MAIN', 'سالن مرکزی ونک', 'سالن اصلی با ظرفیت ۶۰ نفر و موسیقی ملایم', ?)`,
+    ['sec-main', tenantId, companyId, branchId, now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO restaurant_sections (id, tenant_id, company_id, branch_id, code, title, description, created_at)
+     VALUES (?, ?, ?, ?, 'SEC-VIP', 'بخش اختصاصی VIP', 'سالن جلسات تجاری و مراسم خصوصی', ?)`,
+    ['sec-vip', tenantId, companyId, branchId, now]
+  );
+
+  // ۲. میزهای سالن
+  await run(
+    `INSERT OR REPLACE INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'sec-main', 'T01', 'میز شماره ۱ (کنار پنجره)', 4, 'VACANT', 1, ?, ?)`,
+    ['tbl-01', tenantId, companyId, branchId, now, now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'sec-main', 'T02', 'میز شماره ۲ (دونفره دنج)', 2, 'VACANT', 1, ?, ?)`,
+    ['tbl-02', tenantId, companyId, branchId, now, now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'sec-vip', 'VIP01', 'میز بزرگ VIP و اتاق کنفرانس', 8, 'VACANT', 1, ?, ?)`,
+    ['tbl-vip', tenantId, companyId, branchId, now, now]
+  );
+
+  // ۳. دسته‌بندی منوی رستوران
+  await run(
+    `INSERT OR REPLACE INTO restaurant_menu_categories (id, tenant_id, company_id, code, title, icon, display_order, kitchen_station, is_active, created_at)
+     VALUES (?, ?, ?, 'MCAT-PIZZA', 'پیتزا و گریل تخصصی', 'pizza', 1, 'HOT_KITCHEN', 1, ?)`,
+    ['mcat-pizza', tenantId, companyId, now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO restaurant_menu_categories (id, tenant_id, company_id, code, title, icon, display_order, kitchen_station, is_active, created_at)
+     VALUES (?, ?, ?, 'MCAT-COFFEE', 'بار تخصصی قهوه و بارتندری', 'coffee', 2, 'BAR_CAFE', 1, ?)`,
+    ['mcat-coffee', tenantId, companyId, now]
+  );
+
+  // ۴. مواد اولیه آشپزخانه رستوران
+  const rawProducts = [
+    { id: 'raw-dough', code: 'RAW-01', name: 'خمیر پیتزا تخمیر سرد (کیلوگرم)', price: '400000' },
+    { id: 'raw-cheese', code: 'RAW-02', name: 'پنیر موزارلا قالبی درجه یک (کیلوگرم)', price: '1500000' },
+    { id: 'raw-pepperoni', code: 'RAW-03', name: 'سوسیس پپرونی دودی مرغوب (کیلوگرم)', price: '3000000' },
+    { id: 'raw-sauce', code: 'RAW-04', name: 'سس مارینارا دست‌ساز (کیلوگرم)', price: '600000' },
+    { id: 'raw-coffee', code: 'RAW-05', name: 'دانه قهوه اسپرسو ۱۰۰٪ عربیکا (کیلوگرم)', price: '4000000' }
+  ];
+
+  for (const rp of rawProducts) {
+    await run(
+      `INSERT OR REPLACE INTO products (
+        id, tenant_id, company_id, category_id, unit_id, code, name, type,
+        barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+        sell_price, purchase_price, is_active, created_at
+      ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', ?, ?, 'GOODS', NULL, 1, '0.00', 'MOVING_AVERAGE', '5', '200', '0', ?, 1, ?)`,
+      [rp.id, tenantId, companyId, rp.code, rp.name, rp.price, now]
+    );
+
+    // ثبت موجودی اولیه کاردکس مواد در انبار مرکزی
+    await run(
+      `INSERT OR REPLACE INTO stock_ledger_entries (
+        id, tenant_id, company_id, warehouse_id, product_id, variant_id,
+        document_type, document_id, document_number, date_shamsi,
+        in_quantity, in_unit_cost, in_total_cost,
+        out_quantity, out_unit_cost, out_total_cost,
+        balance_quantity, balance_unit_cost, balance_total_cost,
+        created_at
+      ) VALUES (
+        ?, ?, ?, 'wh-main', ?, NULL,
+        'INITIAL_BALANCE', 'init-raw', 'INIT-RAW-01', '1403/01/01',
+        '100', ?, ?,
+        '0', '0', '0',
+        '100', ?, ?,
+        ?
+      )`,
+      [
+        `stk-init-${rp.id}`,
+        tenantId,
+        companyId,
+        rp.id,
+        rp.price,
+        (Number(rp.price) * 100).toString(),
+        rp.price,
+        (Number(rp.price) * 100).toString(),
+        now
+      ]
+    );
+  }
+
+  // ۵. غذاهای نهایی منو
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'MENU-101', 'پیتزا پپرونی ایتالیایی ۳۲ سانتی', 'GOODS', '2800101000000', 0, '0.10', 'MOVING_AVERAGE', '0', '0', '1800000', '493400', 1, ?)`,
+    ['prod-pizza-pep', tenantId, companyId, now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'MENU-102', 'قهوه اسپرسو دبل شات ۱۰۰٪ عربیکا', 'GOODS', '2800102000000', 0, '0.10', 'MOVING_AVERAGE', '0', '0', '450000', '75600', 1, ?)`,
+    ['prod-espresso', tenantId, companyId, now]
+  );
+
+  // ۶. دستور پخت (BOM) پیتزا پپرونی
+  await run(
+    `INSERT OR REPLACE INTO restaurant_recipes (id, tenant_id, company_id, menu_product_id, yield_quantity, notes, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, 'prod-pizza-pep', '1', 'دستور پخت استاندارد پیتزا پپرونی با تخمیر ۴۸ ساعته', 1, ?, ?)`,
+    ['rec-pizza-pep', tenantId, companyId, now, now]
+  );
+
+  const pizzaIngredients = [
+    { id: 'ri-01', rawId: 'raw-dough', qty: '0.200', waste: '0' },      // ۲۰۰ گرم خمیر
+    { id: 'ri-02', rawId: 'raw-cheese', qty: '0.100', waste: '3' },     // ۱۰۰ گرم پنیر موزارلا (۳٪ ضایعات)
+    { id: 'ri-03', rawId: 'raw-pepperoni', qty: '0.080', waste: '0' },  // ۸۰ گرم پپرونی
+    { id: 'ri-04', rawId: 'raw-sauce', qty: '0.030', waste: '5' }       // ۳۰ گرم سس (۵٪ ضایعات)
+  ];
+  for (const it of pizzaIngredients) {
+    await run(
+      `INSERT OR REPLACE INTO restaurant_recipe_items (id, recipe_id, raw_product_id, quantity, waste_percentage, created_at)
+       VALUES (?, 'rec-pizza-pep', ?, ?, ?, ?)`,
+      [it.id, it.rawId, it.qty, it.waste, now]
+    );
+  }
+
+  // دستور پخت قهوه اسپرسو دبل
+  await run(
+    `INSERT OR REPLACE INTO restaurant_recipes (id, tenant_id, company_id, menu_product_id, yield_quantity, notes, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, 'prod-espresso', '1', 'اسپرسو دبل شات استاندارد ۱۸ گرم سابه قهوه', 1, ?, ?)`,
+    ['rec-espresso', tenantId, companyId, now, now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO restaurant_recipe_items (id, recipe_id, raw_product_id, quantity, waste_percentage, created_at)
+     VALUES (?, 'rec-espresso', 'raw-coffee', '0.018', '5', ?)`,
+    ['ri-esp-01', now]
+  );
+
+  // ۷. ثبت شخص پیک دلیوری
+  await run(
+    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, first_name, last_name, mobile, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
+     VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', 'آقای رضا مرادی (پیک دلیوری)', 'رضا', 'مرادی', '09123334455', 0, 0, 1, 'dim-cust-1', 1, ?)`,
+    ['party-courier-1', tenantId, companyId, now]
+  );
+
+  console.log('[Seed Phase 6] Restaurant baseline seeded successfully.');
+
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();
 }
