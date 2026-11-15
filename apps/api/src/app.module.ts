@@ -15,6 +15,9 @@ import { MoadianModule } from './modules/moadian/moadian.module';
 import { PosModule } from './modules/pos/pos.module';
 import { RestaurantModule } from './modules/restaurant/restaurant.module';
 import { ManufacturingModule } from './modules/manufacturing/manufacturing.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
+import { FixedAssetsModule } from './modules/fixed-assets/fixed-assets.module';
+import { TaxReportsModule } from './modules/tax-reports/tax-reports.module';
 
 @Module({
   imports: [
@@ -30,6 +33,9 @@ import { ManufacturingModule } from './modules/manufacturing/manufacturing.modul
     PosModule,
     RestaurantModule,
     ManufacturingModule,
+    PayrollModule,
+    FixedAssetsModule,
+    TaxReportsModule,
     RulesModule,
     AuditModule
   ],

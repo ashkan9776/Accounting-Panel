@@ -83,6 +83,13 @@ export async function runSeed() {
     DELETE FROM manufacturing_bom_items;
     DELETE FROM manufacturing_boms;
     DELETE FROM manufacturing_work_centers;
+    DELETE FROM tax_statutory_reports;
+    DELETE FROM fixed_asset_depreciation_records;
+    DELETE FROM fixed_assets;
+    DELETE FROM payroll_slips;
+    DELETE FROM payroll_periods;
+    DELETE FROM payroll_contracts;
+    DELETE FROM payroll_employees;
   `);
   console.log('[Seed] Schema applied and tables initialized successfully.');
 
@@ -1097,6 +1104,194 @@ export async function runSeed() {
   );
 
   console.log('[Seed Phase 7] Manufacturing baseline seeded successfully.');
+
+  // ==========================================
+  // فاز ۸: حقوق و دستمزد، دارایی‌های ثابت و گزارش‌های مالیاتی (Phase 8 Baseline)
+  // ==========================================
+  // ۱. پرسنل و احکام کارگزینی
+  const employeesData = [
+    {
+      partyId: 'party-emp-1',
+      empId: 'emp-01',
+      code: 'EMP-101',
+      nationalId: '0012345678',
+      firstName: 'سینا',
+      lastName: 'مرادی',
+      fatherName: 'محمود',
+      birthDate: '1368/04/15',
+      hireDate: '1401/01/15',
+      insuranceNumber: '11223344',
+      bankName: 'بانک ملت',
+      bankAccount: '1234567890',
+      sheba: 'IR120120000000001234567890',
+      dept: 'فنی و مهندسی',
+      jobTitle: 'مدیر فنی سخت‌افزار',
+      contractId: 'cnt-01',
+      baseSalary: '180000000',
+      housing: '9000000',
+      grocery: '14000000',
+      seniority: '2100000',
+      childCount: 1,
+      childAllowance: '7166184'
+    },
+    {
+      partyId: 'party-emp-2',
+      empId: 'emp-02',
+      code: 'EMP-102',
+      nationalId: '0023456789',
+      firstName: 'مریم',
+      lastName: 'صادقی',
+      fatherName: 'احمد',
+      birthDate: '1372/08/20',
+      hireDate: '1402/03/01',
+      insuranceNumber: '55667788',
+      bankName: 'بانک پاسارگاد',
+      bankAccount: '9876543210',
+      sheba: 'IR540570000000009876543210',
+      dept: 'مالی و اداری',
+      jobTitle: 'کارشناس ارشد حسابداری',
+      contractId: 'cnt-02',
+      baseSalary: '150000000',
+      housing: '9000000',
+      grocery: '14000000',
+      seniority: '0',
+      childCount: 0,
+      childAllowance: '0'
+    }
+  ];
+
+  for (const emp of employeesData) {
+    // ثبت تفصیلی پرسنل در جدول اشخاص
+    await run(
+      `INSERT OR REPLACE INTO parties (
+        id, tenant_id, company_id, party_type, name, first_name, last_name,
+        national_id, mobile, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at
+      ) VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', ?, ?, ?, ?, '09121112233', 0, 0, 1, 'dim-cust-1', 1, ?)`,
+      [
+        emp.partyId,
+        tenantId,
+        companyId,
+        `${emp.firstName} ${emp.lastName}`,
+        emp.firstName,
+        emp.lastName,
+        emp.nationalId,
+        now
+      ]
+    );
+
+    // ثبت پرونده پرسنل
+    await run(
+      `INSERT OR REPLACE INTO payroll_employees (
+        id, tenant_id, company_id, party_id, personnel_code, national_id,
+        first_name, last_name, father_name, birth_date_shamsi, hire_date_shamsi,
+        insurance_number, bank_name, bank_account_number, bank_sheba_number,
+        department, job_title, is_active, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      [
+        emp.empId,
+        tenantId,
+        companyId,
+        emp.partyId,
+        emp.code,
+        emp.nationalId,
+        emp.firstName,
+        emp.lastName,
+        emp.fatherName,
+        emp.birthDate,
+        emp.hireDate,
+        emp.insuranceNumber,
+        emp.bankName,
+        emp.bankAccount,
+        emp.sheba,
+        emp.dept,
+        emp.jobTitle,
+        now
+      ]
+    );
+
+    // ثبت حکم کارگزینی
+    await run(
+      `INSERT OR REPLACE INTO payroll_contracts (
+        id, tenant_id, company_id, employee_id, contract_type,
+        start_date_shamsi, end_date_shamsi, monthly_base_salary,
+        monthly_housing_allowance, monthly_grocery_allowance, monthly_seniority_bonus,
+        child_count, monthly_child_allowance_per_child, is_active, created_at
+      ) VALUES (?, ?, ?, ?, 'PERMANENT', '1403/01/01', '1403/12/29', ?, ?, ?, ?, ?, ?, 1, ?)`,
+      [
+        emp.contractId,
+        tenantId,
+        companyId,
+        emp.empId,
+        emp.baseSalary,
+        emp.housing,
+        emp.grocery,
+        emp.seniority,
+        emp.childCount,
+        emp.childAllowance,
+        now
+      ]
+    );
+  }
+
+  // ۲. دارایی‌های ثابت نمونه
+  const fixedAssetsData = [
+    {
+      id: 'ast-srv-01',
+      code: 'AST-SRV-01',
+      title: 'سرور مرکزی دیتاسنتر HP ProLiant Gen10',
+      category: 'FURNITURE_OFFICE',
+      date: '1403/01/01',
+      cost: '240000000',
+      salvage: '0',
+      method: 'STRAIGHT_LINE',
+      rate: null,
+      usefulLife: 4,
+      location: 'اتاق سرور ساختمان مرکزی'
+    },
+    {
+      id: 'ast-car-01',
+      code: 'AST-CAR-01',
+      title: 'خودرو پژو ۲۰۷ دنده‌ای اداری شرکت',
+      category: 'VEHICLES',
+      date: '1403/01/01',
+      cost: '600000000',
+      salvage: '60000000',
+      method: 'STRAIGHT_LINE',
+      rate: '20',
+      usefulLife: null,
+      location: 'پارکینگ مرکزی شرکت'
+    }
+  ];
+
+  for (const ast of fixedAssetsData) {
+    await run(
+      `INSERT OR REPLACE INTO fixed_assets (
+        id, tenant_id, company_id, branch_id, asset_code, title, category,
+        purchase_date_shamsi, historical_cost, salvage_value, depreciation_method,
+        annual_rate_percentage, useful_life_years, accumulated_depreciation, book_value,
+        status, cost_center_dimension_id, location, created_at
+      ) VALUES (?, ?, ?, 'branch-central', ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', ?, 'ACTIVE', 'dim-cc-mgmt', ?, ?)`,
+      [
+        ast.id,
+        tenantId,
+        companyId,
+        ast.code,
+        ast.title,
+        ast.category,
+        ast.date,
+        ast.cost,
+        ast.salvage,
+        ast.method,
+        ast.rate,
+        ast.usefulLife,
+        ast.cost,
+        ast.location,
+        now
+      ]
+    );
+  }
+
+  console.log('[Seed Phase 8] Payroll and Fixed Assets baseline seeded successfully.');
 
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();

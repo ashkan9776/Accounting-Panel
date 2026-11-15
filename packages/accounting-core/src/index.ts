@@ -33,5 +33,8 @@ export * from './pos/pos-posting-engine';
 
 export * from './restaurant';
 export * from './manufacturing';
+export * from './payroll';
+export * from './assets';
+export * from './tax-reporting';
 
 

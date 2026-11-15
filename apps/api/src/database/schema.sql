@@ -1361,6 +1361,176 @@ CREATE INDEX IF NOT EXISTS idx_mfg_boms_product ON manufacturing_boms(tenant_id,
 CREATE INDEX IF NOT EXISTS idx_mfg_orders_status ON manufacturing_production_orders(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_mfg_order_materials_order ON manufacturing_order_materials(production_order_id);
 
+-- ۴۹. پرسنل و پرونده کارگزینی (Employees)
+CREATE TABLE IF NOT EXISTS payroll_employees (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    party_id TEXT NOT NULL,
+    personnel_code TEXT NOT NULL,
+    national_id TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    father_name TEXT,
+    birth_date_shamsi TEXT,
+    hire_date_shamsi TEXT NOT NULL,
+    insurance_number TEXT,
+    bank_name TEXT,
+    bank_account_number TEXT,
+    bank_sheba_number TEXT NOT NULL,
+    department TEXT,
+    job_title TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (party_id) REFERENCES parties(id)
+);
+
+-- ۵۰. احکام کارگزینی و قراردادهای پرسنل (Employment Contracts)
+CREATE TABLE IF NOT EXISTS payroll_contracts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    contract_type TEXT NOT NULL, -- PERMANENT, TEMPORARY, PROJECT, HOURLY, COMMISSION
+    start_date_shamsi TEXT NOT NULL,
+    end_date_shamsi TEXT,
+    monthly_base_salary TEXT NOT NULL,
+    monthly_housing_allowance TEXT NOT NULL,
+    monthly_grocery_allowance TEXT NOT NULL,
+    monthly_seniority_bonus TEXT DEFAULT '0',
+    child_count INTEGER DEFAULT 0,
+    monthly_child_allowance_per_child TEXT DEFAULT '0',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (employee_id) REFERENCES payroll_employees(id) ON DELETE CASCADE
+);
+
+-- ۵۱. دوره‌های حقوق و دستمزد ماهانه (Payroll Periods)
+CREATE TABLE IF NOT EXISTS payroll_periods (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year_shamsi TEXT NOT NULL,
+    month_number INTEGER NOT NULL,
+    start_date_shamsi TEXT NOT NULL,
+    end_date_shamsi TEXT NOT NULL,
+    status TEXT DEFAULT 'DRAFT', -- DRAFT, CALCULATED, APPROVED, PAID, CLOSED
+    total_gross_pay TEXT DEFAULT '0',
+    total_deductions TEXT DEFAULT '0',
+    total_net_pay TEXT DEFAULT '0',
+    total_employer_insurance TEXT DEFAULT '0',
+    journal_entry_id TEXT,
+    payment_journal_entry_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+-- ۵۲. فیش‌های حقوقی پرسنل (Payroll Slips)
+CREATE TABLE IF NOT EXISTS payroll_slips (
+    id TEXT PRIMARY KEY,
+    period_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    worked_days INTEGER NOT NULL,
+    overtime_hours TEXT DEFAULT '0',
+    base_pay TEXT NOT NULL,
+    housing_pay TEXT NOT NULL,
+    grocery_pay TEXT NOT NULL,
+    child_pay TEXT DEFAULT '0',
+    seniority_pay TEXT DEFAULT '0',
+    overtime_pay TEXT DEFAULT '0',
+    bonus_pay TEXT DEFAULT '0',
+    gross_pay TEXT NOT NULL,
+    insured_wage TEXT NOT NULL,
+    employee_insurance TEXT NOT NULL,
+    employer_insurance TEXT NOT NULL,
+    unemployment_insurance TEXT NOT NULL,
+    income_tax TEXT NOT NULL,
+    salary_advance_deduction TEXT DEFAULT '0',
+    loan_installment_deduction TEXT DEFAULT '0',
+    other_deductions TEXT DEFAULT '0',
+    total_deductions TEXT NOT NULL,
+    net_payable TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (period_id) REFERENCES payroll_periods(id) ON DELETE CASCADE,
+    FOREIGN KEY (employee_id) REFERENCES payroll_employees(id)
+);
+
+-- ۵۳. دارایی‌های ثابت مشهود (Fixed Assets)
+CREATE TABLE IF NOT EXISTS fixed_assets (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    asset_code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL, -- FURNITURE_OFFICE, VEHICLES, MACHINERY_TECHNICAL
+    purchase_date_shamsi TEXT NOT NULL,
+    historical_cost TEXT NOT NULL,
+    salvage_value TEXT DEFAULT '0',
+    depreciation_method TEXT NOT NULL, -- STRAIGHT_LINE, DECLINING_BALANCE
+    annual_rate_percentage TEXT,
+    useful_life_years INTEGER,
+    accumulated_depreciation TEXT DEFAULT '0',
+    book_value TEXT NOT NULL,
+    status TEXT DEFAULT 'ACTIVE', -- ACTIVE, DEPRECIATED, SOLD, SCRAPPED
+    cost_center_dimension_id TEXT,
+    keeper_party_id TEXT,
+    location TEXT,
+    acquisition_journal_entry_id TEXT,
+    disposal_journal_entry_id TEXT,
+    disposal_date_shamsi TEXT,
+    disposal_sale_price TEXT,
+    disposal_gain_or_loss TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+-- ۵۴. سوابق استهلاک دوره‌ای دارایی‌های ثابت (Asset Depreciation Records)
+CREATE TABLE IF NOT EXISTS fixed_asset_depreciation_records (
+    id TEXT PRIMARY KEY,
+    asset_id TEXT NOT NULL,
+    period_date_shamsi TEXT NOT NULL,
+    months_count INTEGER DEFAULT 1,
+    opening_book_value TEXT NOT NULL,
+    depreciation_amount TEXT NOT NULL,
+    accumulated_depreciation_after TEXT NOT NULL,
+    closing_book_value TEXT NOT NULL,
+    journal_entry_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (asset_id) REFERENCES fixed_assets(id) ON DELETE CASCADE
+);
+
+-- ۵۵. گزارش‌های قانونی و مالیاتی (Tax & Statutory Reports)
+CREATE TABLE IF NOT EXISTS tax_statutory_reports (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    year_shamsi TEXT NOT NULL,
+    quarter TEXT, -- SPRING, SUMMER, AUTUMN, WINTER
+    report_type TEXT NOT NULL, -- ARTICLE_169, VAT_RETURN, CORPORATE_TAX
+    payload_json TEXT NOT NULL,
+    net_payable_amount TEXT DEFAULT '0',
+    journal_entry_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_emp_code ON payroll_employees(tenant_id, personnel_code);
+CREATE INDEX IF NOT EXISTS idx_fixed_assets_code ON fixed_assets(tenant_id, asset_code);
+CREATE INDEX IF NOT EXISTS idx_tax_reports_quarter ON tax_statutory_reports(tenant_id, year_shamsi, quarter, report_type);
+
+
 
 
 

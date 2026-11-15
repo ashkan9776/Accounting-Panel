@@ -202,6 +202,32 @@ export const STANDARD_IRANIAN_SUBSIDIARIES: AccountSubsidiary[] = [
     isCurrencyDependent: false,
     isActive: true
   },
+  {
+    id: 'sub-1404',
+    headId: 'head-14',
+    code: '1404',
+    title: 'مساعده و علی‌الحساب پرداختی به پرسنل',
+    nature: AccountNature.DEBIT,
+    requiresFloatingDimension1: true,
+    allowedDimension1Type: FloatingDimensionType.PARTY,
+    requiresFloatingDimension2: false,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
+    id: 'sub-1405',
+    headId: 'head-14',
+    code: '1405',
+    title: 'وام‌های پرداختی به کارکنان (اقساط آتی)',
+    nature: AccountNature.DEBIT,
+    requiresFloatingDimension1: true,
+    allowedDimension1Type: FloatingDimensionType.PARTY,
+    requiresFloatingDimension2: false,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
 
   // موجودی کالا و مواد (۱۵)
   {
@@ -281,10 +307,62 @@ export const STANDARD_IRANIAN_SUBSIDIARIES: AccountSubsidiary[] = [
     isActive: true
   },
   {
+    id: 'sub-2102',
+    headId: 'head-21',
+    code: '2102',
+    title: 'وسایط نقلیه',
+    nature: AccountNature.DEBIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: true,
+    allowedDimension2Type: FloatingDimensionType.COST_CENTER,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
+    id: 'sub-2103',
+    headId: 'head-21',
+    code: '2103',
+    title: 'ماشین‌آلات و تجهیزات فنی و تولیدی',
+    nature: AccountNature.DEBIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: true,
+    allowedDimension2Type: FloatingDimensionType.COST_CENTER,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
     id: 'sub-2201',
     headId: 'head-22',
     code: '2201',
     title: 'استهلاک انباشته اثاثه و تجهیزات',
+    nature: AccountNature.CREDIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: true,
+    allowedDimension2Type: FloatingDimensionType.COST_CENTER,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
+    id: 'sub-2202',
+    headId: 'head-22',
+    code: '2202',
+    title: 'استهلاک انباشته وسایط نقلیه',
+    nature: AccountNature.CREDIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: true,
+    allowedDimension2Type: FloatingDimensionType.COST_CENTER,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
+    id: 'sub-2203',
+    headId: 'head-22',
+    code: '2203',
+    title: 'استهلاک انباشته ماشین‌آلات و تجهیزات',
     nature: AccountNature.CREDIT,
     requiresFloatingDimension1: false,
     requiresFloatingDimension2: true,
@@ -400,6 +478,18 @@ export const STANDARD_IRANIAN_SUBSIDIARIES: AccountSubsidiary[] = [
     isCurrencyDependent: false,
     isActive: true
   },
+  {
+    id: 'sub-3307',
+    headId: 'head-33',
+    code: '3307',
+    title: 'ذخیره مالیات بر درآمد عملکرد (ماده ۱۰۵)',
+    nature: AccountNature.CREDIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: false,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
 
   // حقوق مالکانه (۵۱، ۵۲، ۵۳)
   {
@@ -486,6 +576,19 @@ export const STANDARD_IRANIAN_SUBSIDIARIES: AccountSubsidiary[] = [
     nature: AccountNature.CREDIT,
     requiresFloatingDimension1: false,
     requiresFloatingDimension2: false,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
+    id: 'sub-6106',
+    headId: 'head-61',
+    code: '6106',
+    title: 'سود ناشی از واگذاری و فروش دارایی‌های ثابت',
+    nature: AccountNature.CREDIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: false,
+    allowedDimension2Type: FloatingDimensionType.COST_CENTER,
     requiresFloatingDimension3: false,
     isCurrencyDependent: false,
     isActive: true
@@ -627,6 +730,31 @@ export const STANDARD_IRANIAN_SUBSIDIARIES: AccountSubsidiary[] = [
     headId: 'head-81',
     code: '8108',
     title: 'هزینه کسری و انبارگردانی کالا',
+    nature: AccountNature.DEBIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: false,
+    allowedDimension2Type: FloatingDimensionType.COST_CENTER,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
+    id: 'sub-8109',
+    headId: 'head-81',
+    code: '8109',
+    title: 'هزینه مالیات بر درآمد عملکرد دوره',
+    nature: AccountNature.DEBIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: false,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
+    id: 'sub-8110',
+    headId: 'head-81',
+    code: '8110',
+    title: 'زیان ناشی از واگذاری و فروش دارایی‌های ثابت',
     nature: AccountNature.DEBIT,
     requiresFloatingDimension1: false,
     requiresFloatingDimension2: false,

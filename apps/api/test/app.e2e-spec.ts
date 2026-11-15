@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import Decimal from 'decimal.js';
 import { AppModule } from '../src/app.module';
 import { runSeed } from '../src/database/seed';
 
@@ -21,6 +22,9 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
   let createdKdsHotTicketId: string;
   let createdDeliveryId: string;
   let createdProductionOrderId: string;
+  let createdEmployeeId: string;
+  let createdPeriodId: string;
+  let createdAssetId: string;
 
   beforeAll(async () => {
     await runSeed();
@@ -1670,6 +1674,361 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     expect(getOrderRes.body.data.status).toBe('CLOSED');
     expect(getOrderRes.body.data.produced_quantity).toBe('10');
     expect(getOrderRes.body.data.completion_journal_entry_id).toBeDefined();
+  });
+
+  // ==========================================
+  // آزمون‌های فاز ۸: حقوق و دستمزد، دارایی‌های ثابت، مالیات و گزارش‌های قانونی
+  // ==========================================
+
+  it('Step 49 (Phase 8): Should register new employee and create labor contract', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/payroll/employees')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        personnelCode: 'EMP-103',
+        nationalId: '0019876543',
+        firstName: 'آرش',
+        lastName: 'افشار',
+        hireDateShamsi: '1403/01/01',
+        insuranceNumber: '88776655',
+        bankName: 'بانک ملت',
+        bankShebaNumber: 'IR120120000000001234567890',
+        department: 'فنی و مهندسی',
+        jobTitle: 'مهندس ارشد نرم‌افزار',
+        contract: {
+          contractType: 'PERMANENT',
+          startDateShamsi: '1403/01/01',
+          monthlyBaseSalary: 150000000,
+          monthlyHousingAllowance: 9000000,
+          monthlyGroceryAllowance: 14000000,
+          monthlySeniorityBonus: 2100000,
+          childCount: 1,
+          monthlyChildAllowancePerChild: 7166184
+        }
+      })
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBeDefined();
+    expect(res.body.data.personnel_code).toBe('EMP-103');
+    expect(res.body.data.activeContract).toBeDefined();
+    createdEmployeeId = res.body.data.id;
+  });
+
+  it('Step 50 (Phase 8): Should create monthly payroll period and calculate salary slips', async () => {
+    // ۱. ایجاد دوره حقوق بهمن ۱۴۰۳
+    const periodRes = await request(app.getHttpServer())
+      .post('/api/v1/payroll/periods')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .send({
+        title: 'حقوق و دستمزد بهمن ماه ۱۴۰۳',
+        yearShamsi: '1403',
+        monthNumber: 11,
+        startDateShamsi: '1403/11/01',
+        endDateShamsi: '1403/11/30'
+      })
+      .expect(201);
+
+    expect(periodRes.body.success).toBe(true);
+    createdPeriodId = periodRes.body.data.id;
+
+    // ۲. محاسبه فیش حقوقی برای پرسنل با کارکرد و اضافه‌کار و مساعده
+    const calcRes = await request(app.getHttpServer())
+      .post(`/api/v1/payroll/periods/${createdPeriodId}/calculate`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        timecards: [
+          {
+            employeeId: 'emp-01',
+            workedDays: 30,
+            overtimeHours: 20
+          },
+          {
+            employeeId: 'emp-02',
+            workedDays: 30,
+            overtimeHours: 10
+          },
+          {
+            employeeId: createdEmployeeId,
+            workedDays: 30,
+            overtimeHours: 15,
+            advanceDeduction: 10000000
+          }
+        ]
+      })
+      .expect(201);
+
+    expect(calcRes.body.success).toBe(true);
+    expect(calcRes.body.data.slips.length).toBeGreaterThanOrEqual(3);
+    expect(Number(calcRes.body.data.total_gross_pay)).toBeGreaterThan(300000000);
+    expect(Number(calcRes.body.data.total_net_pay)).toBeGreaterThan(250000000);
+  });
+
+  it('Step 51 (Phase 8): Should approve payroll period and post monthly payroll journal entry', async () => {
+    const approveRes = await request(app.getHttpServer())
+      .post(`/api/v1/payroll/periods/${createdPeriodId}/approve`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        dateShamsi: '1403/11/30',
+        costCenterDimensionId: 'dim-cc-1'
+      })
+      .expect(201);
+
+    expect(approveRes.body.success).toBe(true);
+    expect(approveRes.body.data.status).toBe('APPROVED');
+    expect(approveRes.body.data.journalEntry).toBeDefined();
+
+    const jLines = approveRes.body.data.journalEntry.lines;
+    const debitSalaryExp = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-8101');
+    const debitEmployerIns = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-8102');
+    const creditInsPayable = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-3304');
+    const creditTaxPayable = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-3305');
+    const creditStaffPayable = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-3303');
+
+    expect(debitSalaryExp).toBeDefined();
+    expect(debitEmployerIns).toBeDefined();
+    expect(creditInsPayable).toBeDefined();
+    expect(creditTaxPayable).toBeDefined();
+    expect(creditStaffPayable).toBeDefined();
+  });
+
+  it('Step 52 (Phase 8): Should pay salaries via bank Paya batch and generate Social Security DSKWOR diskette', async () => {
+    const payRes = await request(app.getHttpServer())
+      .post(`/api/v1/payroll/periods/${createdPeriodId}/pay`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        dateShamsi: '1403/11/30',
+        bankFloatingDimensionId: 'dim-bank-1'
+      })
+      .expect(201);
+
+    expect(payRes.body.success).toBe(true);
+    expect(payRes.body.data.status).toBe('PAID');
+    expect(payRes.body.data.paymentBatch).toBeDefined();
+    expect(payRes.body.data.paymentBatch.totalRecords).toBeGreaterThanOrEqual(3);
+    expect(payRes.body.data.journalEntry).toBeDefined();
+
+    const jLines = payRes.body.data.journalEntry.lines;
+    const debitStaff = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-3303');
+    const creditBank = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1102');
+    expect(debitStaff).toBeDefined();
+    expect(creditBank).toBeDefined();
+
+    // تولید دیسکت تامین اجتماعی DSKWOR
+    const taminRes = await request(app.getHttpServer())
+      .get(`/api/v1/payroll/periods/${createdPeriodId}/tamin-diskette`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(taminRes.body.success).toBe(true);
+    expect(taminRes.body.data.workersCount).toBeGreaterThanOrEqual(3);
+    expect(taminRes.body.data.dskworContent).toContain('0019876543');
+  });
+
+  it('Step 53 (Phase 8): Should acquire fixed asset and post acquisition journal entry', async () => {
+    const assetRes = await request(app.getHttpServer())
+      .post('/api/v1/fixed-assets')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        assetCode: 'AST-LPT-05',
+        title: 'لپ‌تاپ مهندسی لنوو ThinkPad P1',
+        category: 'COMPUTERS_AND_IT',
+        purchaseDateShamsi: '1403/11/01',
+        historicalCost: 120000000,
+        salvageValue: 5000000,
+        depreciationMethod: 'STRAIGHT_LINE',
+        usefulLifeYears: 3,
+        location: 'دفتر مرکزی - واحد فنی',
+        costCenterDimensionId: 'dim-cc-1',
+        creditSubsidiaryId: 'sub-1102',
+        creditFloatingDimensionId: 'dim-bank-1'
+      })
+      .expect(201);
+
+    expect(assetRes.body.success).toBe(true);
+    expect(assetRes.body.data.asset.id).toBeDefined();
+    expect(assetRes.body.data.asset.asset_code).toBe('AST-LPT-05');
+    expect(assetRes.body.data.journalEntry).toBeDefined();
+    createdAssetId = assetRes.body.data.asset.id;
+
+    const jLines = assetRes.body.data.journalEntry.lines;
+    const debitAsset = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-2101');
+    const creditBank = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1102');
+    expect(debitAsset).toBeDefined();
+    expect(creditBank).toBeDefined();
+    expect(debitAsset.debit).toBe('120000000');
+    expect(creditBank.credit).toBe('120000000');
+  });
+
+  it('Step 54 (Phase 8): Should calculate monthly asset depreciation and post accumulated depreciation entry', async () => {
+    const depRes = await request(app.getHttpServer())
+      .post('/api/v1/fixed-assets/depreciation/calculate')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        periodTitle: 'استهلاک بهمن ماه ۱۴۰۳',
+        periodDateShamsi: '1403/11/30',
+        monthsCount: 1,
+        assetIds: [createdAssetId],
+        costCenterDimensionId: 'dim-cc-1'
+      })
+      .expect(201);
+
+    expect(depRes.body.success).toBe(true);
+    expect(depRes.body.data.depreciatedCount).toBe(1);
+    expect(depRes.body.data.totalDepreciationAmount).toBe('3194444');
+    expect(depRes.body.data.journalEntry).toBeDefined();
+
+    const jLines = depRes.body.data.journalEntry.lines;
+    const debitDepExp = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-8104');
+    const creditAccDep = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-2201');
+    expect(debitDepExp).toBeDefined();
+    expect(creditAccDep).toBeDefined();
+    expect(debitDepExp.debit).toBe('3194444');
+    expect(creditAccDep.credit).toBe('3194444');
+  });
+
+  it('Step 55 (Phase 8): Should dispose fixed asset and post disposal gain/loss voucher', async () => {
+    const dispRes = await request(app.getHttpServer())
+      .post(`/api/v1/fixed-assets/${createdAssetId}/dispose`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        disposalDateShamsi: '1403/11/30',
+        salePrice: 125000000,
+        paymentReceivableSubsidiaryId: 'sub-1102',
+        paymentFloatingDimensionId: 'dim-bank-1',
+        costCenterDimensionId: 'dim-cc-1'
+      })
+      .expect(201);
+
+    expect(dispRes.body.success).toBe(true);
+    expect(dispRes.body.data.disposalResult.isGain).toBe(true);
+    expect(dispRes.body.data.disposalResult.gainOrLossAmount).toBe('8194444');
+    expect(dispRes.body.data.journalEntry).toBeDefined();
+
+    const jLines = dispRes.body.data.journalEntry.lines;
+    const debitBank = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1102');
+    const debitAccDep = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-2201');
+    const creditAsset = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-2101');
+    const creditGain = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-6106');
+
+    expect(debitBank).toBeDefined();
+    expect(debitAccDep).toBeDefined();
+    expect(creditAsset).toBeDefined();
+    expect(creditGain).toBeDefined();
+  });
+
+  it('Step 56 (Phase 8): Should extract quarterly VAT return and post settlement/offsetting voucher', async () => {
+    const vatRes = await request(app.getHttpServer())
+      .get('/api/v1/tax/vat-return?yearShamsi=1403&quarter=WINTER')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(vatRes.body.success).toBe(true);
+    expect(vatRes.body.data.yearShamsi).toBe('1403');
+    expect(vatRes.body.data.quarter).toBe('WINTER');
+    expect(Number(vatRes.body.data.outputVatCollected)).toBeGreaterThan(0);
+
+    const settleRes = await request(app.getHttpServer())
+      .post('/api/v1/tax/vat-return/settle')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        yearShamsi: '1403',
+        quarter: 'WINTER',
+        dateShamsi: '1403/12/29',
+        bankFloatingDimensionId: 'dim-bank-1'
+      })
+      .expect(201);
+
+    expect(settleRes.body.success).toBe(true);
+    expect(settleRes.body.data.reportId).toBe('vat-1403-WINTER');
+    expect(settleRes.body.data.journalEntry).toBeDefined();
+
+    const jLines = settleRes.body.data.journalEntry.lines;
+    const debitVatOut = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-3306');
+    expect(debitVatOut).toBeDefined();
+  });
+
+  it('Step 57 (Phase 8): Should generate seasonal Article 169 (TTMS) report and export CSV', async () => {
+    const r169Res = await request(app.getHttpServer())
+      .get('/api/v1/tax/article-169?yearShamsi=1403&quarter=WINTER')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(r169Res.body.success).toBe(true);
+    expect(r169Res.body.data.yearShamsi).toBe('1403');
+    expect(r169Res.body.data.salesCount).toBeGreaterThan(0);
+    expect(r169Res.body.data.csvContent).toBeDefined();
+    expect(r169Res.body.data.csvContent).toContain('نوع معامله,نام طرف معامله');
+  });
+
+  it('Step 58 (Phase 8): Should estimate corporate income tax (Article 105 - 25%) and post tax provision voucher', async () => {
+    const corpRes = await request(app.getHttpServer())
+      .post('/api/v1/tax/corporate-tax/provision')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        yearShamsi: '1403',
+        dateShamsi: '1403/12/29',
+        taxExemptions: 0,
+        costCenterDimensionId: 'dim-cc-1'
+      })
+      .expect(201);
+
+    expect(corpRes.body.success).toBe(true);
+    expect(corpRes.body.data.reportId).toBe('tax-corp-1403');
+    expect(corpRes.body.data.estimation).toBeDefined();
+    expect(corpRes.body.data.estimation.taxRate).toBe('0.25');
+
+    if (new Decimal(corpRes.body.data.estimation.estimatedTaxProvision).greaterThan(0)) {
+      expect(corpRes.body.data.journalEntry).toBeDefined();
+      const jLines = corpRes.body.data.journalEntry.lines;
+      const debitTaxExp = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-8109');
+      const creditTaxProv = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-3307');
+      expect(debitTaxExp).toBeDefined();
+      expect(creditTaxProv).toBeDefined();
+      expect(debitTaxExp.debit).toBe(corpRes.body.data.estimation.estimatedTaxProvision);
+      expect(creditTaxProv.credit).toBe(corpRes.body.data.estimation.estimatedTaxProvision);
+    }
   });
 
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {
