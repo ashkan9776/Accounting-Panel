@@ -1293,6 +1293,87 @@ export async function runSeed() {
 
   console.log('[Seed Phase 8] Payroll and Fixed Assets baseline seeded successfully.');
 
+  // ==========================================
+  // فاز ۹: داشبورد هوش تجاری و هشدارهای مالی
+  // ==========================================
+  console.log('[Seed Phase 9] Seeding Dashboard widgets and Financial Alert rules...');
+  const defaultWidgets = [
+    {
+      id: 'wdg-kpi-1',
+      type: 'KPI_CARD',
+      title: 'شاخص‌های کلیدی مالی و نقدینگی',
+      x: 0,
+      y: 0,
+      w: 12,
+      h: 2,
+      config: JSON.stringify({ metrics: ['CASH_BALANCE', 'MONTHLY_SALES', 'GROSS_PROFIT', 'NET_PROFIT'] })
+    },
+    {
+      id: 'wdg-cash-trend-1',
+      type: 'CASH_FLOW_CHART',
+      title: 'روند جریان نقدینگی و مانده تجمیعی ۳۰ روزه',
+      x: 0,
+      y: 2,
+      w: 8,
+      h: 4,
+      config: JSON.stringify({ periodDays: 30, chartType: 'AREA' })
+    },
+    {
+      id: 'wdg-aging-1',
+      type: 'AGING_BAR',
+      title: 'تحلیل سنی مطالبات سررسید گذشته (Aging)',
+      x: 8,
+      y: 2,
+      w: 4,
+      h: 4,
+      config: JSON.stringify({ showPercentages: true })
+    }
+  ];
+
+  for (const w of defaultWidgets) {
+    await run(
+      `INSERT OR REPLACE INTO dashboard_widgets (
+        id, tenant_id, user_id, widget_type, title, position_x, position_y, width, height, config_json, is_visible, created_at
+      ) VALUES (?, ?, 'user-admin-1', ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      [w.id, tenantId, w.type, w.title, w.x, w.y, w.w, w.h, w.config, now]
+    );
+  }
+
+  const defaultAlertRules = [
+    {
+      id: 'rule-alert-cash',
+      code: 'CASH_DEFICIT',
+      title: 'هشدار کسری نقدینگی برای پاس شدن چک‌های صیاد',
+      threshold: '0',
+      severity: 'CRITICAL'
+    },
+    {
+      id: 'rule-alert-aging',
+      code: 'OVERDUE_RECEIVABLES',
+      title: 'هشدار مطالبات معوق با ریسک عدم وصول',
+      threshold: '50000000',
+      severity: 'WARNING'
+    },
+    {
+      id: 'rule-alert-tax',
+      code: 'TAX_DEADLINE',
+      title: 'یادآوری مهلت تسویه اظهارنامه فصلی ارزش افزوده',
+      threshold: '0',
+      severity: 'INFO'
+    }
+  ];
+
+  for (const ar of defaultAlertRules) {
+    await run(
+      `INSERT OR REPLACE INTO financial_alert_rules (
+        id, tenant_id, company_id, rule_code, title, threshold_amount, severity, is_active, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      [ar.id, tenantId, companyId, ar.code, ar.title, ar.threshold, ar.severity, now]
+    );
+  }
+
+  console.log('[Seed Phase 9] Dashboard widgets and alert rules seeded successfully.');
+
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();
 }

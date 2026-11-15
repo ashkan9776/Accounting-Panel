@@ -2031,6 +2031,170 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     }
   });
 
+  // ==========================================
+  // آزمون‌های فاز ۹: صورت‌های مالی اساسی، نسبت‌های مالی و داشبورد مدیریتی (BI)
+  // ==========================================
+
+  it('Step 59 (Phase 9): Should generate multi-step Income Statement (P&L) with revenues, COGS and net income', async () => {
+    const isRes = await request(app.getHttpServer())
+      .get('/api/v1/financial-reports/income-statement?fromDate=1403/01/01&toDate=1403/12/29')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(isRes.body.success).toBe(true);
+    const isData = isRes.body.data;
+
+    expect(Number(isData.grossRevenues)).toBeGreaterThan(0);
+    expect(Number(isData.netRevenues)).toBeGreaterThan(0);
+    expect(isData.costOfGoodsAndServicesSold).toBeDefined();
+    expect(isData.grossProfit).toBeDefined();
+    expect(isData.administrativeExpenses).toBeDefined();
+    expect(isData.operatingProfit).toBeDefined();
+    expect(isData.profitBeforeTax).toBeDefined();
+    expect(isData.netIncome).toBeDefined();
+    expect(typeof isData.isProfitable).toBe('boolean');
+  });
+
+  it('Step 60 (Phase 9): Should generate Balance Sheet conforming to Iranian Standard No. 1 with Assets = Liabilities + Equity', async () => {
+    const bsRes = await request(app.getHttpServer())
+      .get('/api/v1/financial-reports/balance-sheet?asOfDate=1403/12/29')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(bsRes.body.success).toBe(true);
+    const bsData = bsRes.body.data;
+
+    // دارایی‌های جاری و غیرجاری
+    expect(bsData.currentAssets).toBeDefined();
+    expect(Number(bsData.currentAssets.subtotal)).toBeGreaterThan(0);
+    expect(bsData.nonCurrentAssets).toBeDefined();
+    expect(Number(bsData.totalAssets)).toBeGreaterThan(0);
+
+    // بدهی‌ها و حقوق مالکانه
+    expect(bsData.currentLiabilities).toBeDefined();
+    expect(bsData.totalLiabilities).toBeDefined();
+    expect(bsData.equity).toBeDefined();
+    expect(bsData.totalEquity).toBeDefined();
+    expect(bsData.totalLiabilitiesAndEquity).toBeDefined();
+
+    // تراز بودن ترازنامه
+    expect(bsData.isBalanced).toBe(true);
+    expect(bsData.discrepancyAmount).toBe('0');
+  });
+
+  it('Step 61 (Phase 9): Should generate Cash Flow Statement conforming to Standard No. 2 with Operating, Investing and Financing', async () => {
+    const cfRes = await request(app.getHttpServer())
+      .get('/api/v1/financial-reports/cash-flow?fromDate=1403/01/01&toDate=1403/12/29')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(cfRes.body.success).toBe(true);
+    const cfData = cfRes.body.data;
+
+    expect(cfData.operatingActivities).toBeDefined();
+    expect(cfData.operatingActivities.netCashFromOperatingActivities).toBeDefined();
+    expect(cfData.investingActivities).toBeDefined();
+    expect(cfData.investingActivities.netCashFromInvestingActivities).toBeDefined();
+    expect(cfData.financingActivities).toBeDefined();
+    expect(cfData.financingActivities.netCashFromFinancingActivities).toBeDefined();
+    expect(cfData.netChangeInCash).toBeDefined();
+    expect(Number(cfData.endingCashBalance)).toBeGreaterThan(0);
+  });
+
+  it('Step 62 (Phase 9): Should calculate comprehensive Financial Ratios (Liquidity, Profitability, Activity, Leverage)', async () => {
+    const ratioRes = await request(app.getHttpServer())
+      .get('/api/v1/financial-reports/ratios?asOfDate=1403/12/29')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(ratioRes.body.success).toBe(true);
+    const rData = ratioRes.body.data;
+
+    // نسبت‌های نقدینگی
+    expect(rData.liquidity).toBeDefined();
+    expect(Number(rData.liquidity.currentRatio)).toBeGreaterThan(0);
+    expect(Number(rData.liquidity.quickRatio)).toBeGreaterThan(0);
+    expect(Number(rData.liquidity.cashRatio)).toBeGreaterThan(0);
+
+    // نسبت‌های سودآوری
+    expect(rData.profitability).toBeDefined();
+    expect(rData.profitability.grossProfitMarginPercentage).toBeDefined();
+    expect(rData.profitability.netProfitMarginPercentage).toBeDefined();
+
+    // نسبت‌های فعالیت و اهرمی
+    expect(rData.activity).toBeDefined();
+    expect(rData.leverage).toBeDefined();
+    expect(rData.leverage.debtRatioPercentage).toBeDefined();
+    expect(rData.financialHealthGrade).toBeDefined();
+    expect(rData.observations.length).toBeGreaterThan(0);
+  });
+
+  it('Step 63 (Phase 9): Should generate Executive Dashboard with daily cash, trend, aging, top products and alerts', async () => {
+    const dashRes = await request(app.getHttpServer())
+      .get('/api/v1/dashboard/executive?asOfDate=1403/12/29')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(dashRes.body.success).toBe(true);
+    const dData = dashRes.body.data;
+
+    expect(Number(dData.todayCashBalance)).toBeGreaterThan(0);
+    expect(Number(dData.monthlySalesRevenue)).toBeGreaterThan(0);
+    expect(dData.receivablesAging).toBeDefined();
+    expect(dData.receivablesAging.current0To30Days).toBeDefined();
+    expect(dData.cashTrendLast30Days.length).toBeGreaterThan(0);
+    expect(dData.activeAlerts).toBeDefined();
+  });
+
+  it('Step 64 (Phase 9): Should retrieve and update customizable user Dashboard Widgets', async () => {
+    // ۱. استعلام ویجت‌های داشبورد کاربر
+    const getWdgRes = await request(app.getHttpServer())
+      .get('/api/v1/dashboard/widgets')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(getWdgRes.body.success).toBe(true);
+    expect(getWdgRes.body.data.length).toBeGreaterThanOrEqual(3);
+
+    const firstWidget = getWdgRes.body.data[0];
+
+    // ۲. به‌روزرسانی چیدمان ویجت‌ها
+    const putWdgRes = await request(app.getHttpServer())
+      .put('/api/v1/dashboard/widgets/layout')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        widgets: [
+          {
+            id: firstWidget.id,
+            positionX: 4,
+            positionY: 4,
+            width: 8,
+            height: 3
+          }
+        ]
+      })
+      .expect(200);
+
+    expect(putWdgRes.body.success).toBe(true);
+    const updated = putWdgRes.body.data.find((w: any) => w.id === firstWidget.id);
+    expect(updated.position_x).toBe(4);
+    expect(updated.position_y).toBe(4);
+  });
+
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {
     const tbRes = await request(app.getHttpServer())
       .get('/api/v1/accounting/reports/trial-balance')

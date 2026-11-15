@@ -18,6 +18,7 @@ import { ManufacturingModule } from './modules/manufacturing/manufacturing.modul
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { FixedAssetsModule } from './modules/fixed-assets/fixed-assets.module';
 import { TaxReportsModule } from './modules/tax-reports/tax-reports.module';
+import { FinancialReportsModule } from './modules/financial-reports/financial-reports.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { TaxReportsModule } from './modules/tax-reports/tax-reports.module';
     PayrollModule,
     FixedAssetsModule,
     TaxReportsModule,
+    FinancialReportsModule,
     RulesModule,
     AuditModule
   ],

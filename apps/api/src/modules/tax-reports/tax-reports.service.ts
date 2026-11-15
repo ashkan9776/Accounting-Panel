@@ -6,7 +6,8 @@ import {
   Article169Engine,
   CorporateTaxEngine,
   TaxQuarter,
-  JournalEntryType
+  JournalEntryType,
+  JournalEntryStatus
 } from '@accounting/core';
 import Decimal from 'decimal.js';
 
@@ -221,7 +222,7 @@ export class TaxReportsService {
        JOIN journal_entries je ON jl.journal_entry_id = je.id
        JOIN account_subsidiaries s ON jl.subsidiary_account_id = s.id
        JOIN account_heads h ON s.head_id = h.id
-       WHERE je.tenant_id = ? AND je.company_id = ? AND je.status = 'POSTED'
+       WHERE je.tenant_id = ? AND je.company_id = ? AND je.status IN ('APPROVED', 'FINALIZED')
          AND h.code LIKE '6%'`,
       [tenantId, companyId]
     );
@@ -232,7 +233,7 @@ export class TaxReportsService {
        JOIN journal_entries je ON jl.journal_entry_id = je.id
        JOIN account_subsidiaries s ON jl.subsidiary_account_id = s.id
        JOIN account_heads h ON s.head_id = h.id
-       WHERE je.tenant_id = ? AND je.company_id = ? AND je.status = 'POSTED'
+       WHERE je.tenant_id = ? AND je.company_id = ? AND je.status IN ('APPROVED', 'FINALIZED')
          AND (h.code LIKE '7%' OR h.code LIKE '8%')`,
       [tenantId, companyId]
     );
@@ -263,6 +264,9 @@ export class TaxReportsService {
         sourceModule: 'TAX_REPORTS',
         lines: journalLines
       });
+
+      await this.journalService.approveEntry(tenantId, journalEntry.id, userId);
+      journalEntry.status = JournalEntryStatus.APPROVED;
     }
 
     const reportId = `tax-corp-${data.yearShamsi}`;

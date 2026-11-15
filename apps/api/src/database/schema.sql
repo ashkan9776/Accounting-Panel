@@ -1530,6 +1530,62 @@ CREATE INDEX IF NOT EXISTS idx_payroll_emp_code ON payroll_employees(tenant_id, 
 CREATE INDEX IF NOT EXISTS idx_fixed_assets_code ON fixed_assets(tenant_id, asset_code);
 CREATE INDEX IF NOT EXISTS idx_tax_reports_quarter ON tax_statutory_reports(tenant_id, year_shamsi, quarter, report_type);
 
+-- ۵۶. ویجت‌های داشبورد شخصی‌سازی‌شده کاربر (Dashboard Widgets)
+CREATE TABLE IF NOT EXISTS dashboard_widgets (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    widget_type TEXT NOT NULL, -- KPI_CARD, CASH_FLOW_CHART, AGING_BAR, TOP_PRODUCTS_TABLE, RATIOS_RADAR, ALERTS_LIST
+    title TEXT NOT NULL,
+    position_x INTEGER DEFAULT 0,
+    position_y INTEGER DEFAULT 0,
+    width INTEGER DEFAULT 4,
+    height INTEGER DEFAULT 3,
+    config_json TEXT,
+    is_visible INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ۵۷. قوانین هشدارهای هوشمند مالی و نقدینگی (Financial Alert Rules)
+CREATE TABLE IF NOT EXISTS financial_alert_rules (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    rule_code TEXT NOT NULL, -- CASH_DEFICIT, OVERDUE_RECEIVABLES, TAX_DEADLINE, INVENTORY_SHORTAGE
+    title TEXT NOT NULL,
+    threshold_amount TEXT DEFAULT '0',
+    severity TEXT NOT NULL, -- INFO, WARNING, CRITICAL
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+-- ۵۸. لاگ هشدارهای مالیاتی، بانکی و نقدینگی (Financial Alerts Log)
+CREATE TABLE IF NOT EXISTS financial_alerts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    rule_id TEXT,
+    severity TEXT NOT NULL, -- INFO, WARNING, CRITICAL
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    due_date_shamsi TEXT,
+    action_required TEXT,
+    is_resolved INTEGER DEFAULT 0,
+    resolved_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (rule_id) REFERENCES financial_alert_rules(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_user ON dashboard_widgets(tenant_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_financial_alerts_active ON financial_alerts(tenant_id, company_id, is_resolved);
+
+
 
 
 

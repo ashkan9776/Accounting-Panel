@@ -36,5 +36,6 @@ export * from './manufacturing';
 export * from './payroll';
 export * from './assets';
 export * from './tax-reporting';
+export * from './financial-statements';
 
 
