@@ -4,6 +4,7 @@ import request from 'supertest';
 import Decimal from 'decimal.js';
 import { AppModule } from '../src/app.module';
 import { runSeed } from '../src/database/seed';
+import { SecurityEngine } from '@accounting/core';
 
 describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲ و فاز ۳)', () => {
   let app: INestApplication;
@@ -2459,6 +2460,303 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     expect(attRes.body.data.overtimeMinutes).toBe(90); // ۱.۵ ساعت اضافه‌کاری
     expect(attRes.body.data.firstClockIn).toBe('08:00:00');
     expect(attRes.body.data.lastClockOut).toBe('17:30:00');
+  });
+
+  // =========================================================================
+  // آزمون‌های فاز ۱۱: زیرساخت SaaS، اشتراک، امنیت، Onboarding و مهاجرت داده
+  // =========================================================================
+
+  it('Step 71 (Phase 11): Should query SaaS plans, retrieve tenant subscription and check usage metrics against quotas', async () => {
+    // ۱. استعلام کاتالوگ تمام پلن‌های اشتراک ابری
+    const plansRes = await request(app.getHttpServer())
+      .get('/api/v1/saas/plans')
+      .expect(200);
+
+    expect(plansRes.body.success).toBe(true);
+    expect(plansRes.body.data.length).toBeGreaterThanOrEqual(4);
+    const proPlan = plansRes.body.data.find((p: any) => p.code === 'PRO');
+    expect(proPlan).toBeDefined();
+    expect(proPlan.maxMonthlyTransactions).toBe(15000);
+    expect(proPlan.hasApiAccess).toBe(true);
+
+    // ۲. استعلام اشتراک فعال سازمان جاری (tenant-pishro)
+    const subRes = await request(app.getHttpServer())
+      .get('/api/v1/saas/subscription')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(subRes.body.success).toBe(true);
+    expect(subRes.body.data.subscription.status).toBe('ACTIVE');
+    expect(subRes.body.data.evaluation.status).toBe('ACTIVE');
+    expect(subRes.body.data.evaluation.daysRemaining).toBeGreaterThan(300);
+    expect(subRes.body.data.evaluation.isInGracePeriod).toBe(false);
+
+    // ۳. استعلام میزان مصرف منابع ماه جاری نسبت به سقف پلن
+    const usageRes = await request(app.getHttpServer())
+      .get('/api/v1/saas/usage')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(usageRes.body.success).toBe(true);
+    expect(usageRes.body.data.metrics.periodMonth).toBe('1403-12');
+    expect(usageRes.body.data.limits.maxTransactions).toBe(15000);
+    expect(usageRes.body.data.usagePercentages.transactions).toBeLessThan(50);
+  });
+
+  it('Step 72 (Phase 11): Should calculate prorated plan upgrade and execute subscription upgrade', async () => {
+    // ۱. محاسبه پیش‌فاکتور ارتقای تناسبی از پلن حرفه‌ای به پلن سازمانی (ENTERPRISE)
+    const calcRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/upgrade/calculate')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        newPlanId: 'plan-enterprise'
+      })
+      .expect(201);
+
+    expect(calcRes.body.success).toBe(true);
+    expect(calcRes.body.data.calculation.newPlanId).toBe('plan-enterprise');
+    expect(calcRes.body.data.calculation.remainingDays).toBeGreaterThan(0);
+    expect(calcRes.body.data.calculation.netPayableAmount).toBeDefined();
+
+    // ۲. اعمال و ثبت ارتقای اشتراک سازمان
+    const execRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/upgrade/execute')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        newPlanId: 'plan-enterprise',
+        billingCycle: 'YEARLY',
+        paymentReference: 'SHP-UPG-ENTERPRISE-001'
+      })
+      .expect(201);
+
+    expect(execRes.body.success).toBe(true);
+    expect(execRes.body.data.success).toBe(true);
+    expect(execRes.body.data.subscriptionId).toBeDefined();
+    expect(execRes.body.data.newPlan.tier).toBe('ENTERPRISE');
+  });
+
+  it('Step 73 (Phase 11): Should onboard a brand-new tenant with industry-specific Chart of Accounts (Manufacturing) and trial subscription', async () => {
+    // راه‌اندازی تمام‌خودکار شرکت صنعتی و تولیدی جدید
+    const onboardingRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/onboarding')
+      .send({
+        organizationName: 'شرکت صنایع قطعه‌سازان نوین البرز',
+        nationalId: '10100123456', // شناسه ملی حقوقی معتبر ۱۱ رقمی
+        economicCode: '411234567890',
+        industry: 'MANUFACTURING',
+        defaultCurrency: 'IRR',
+        initialFiscalYearTitle: 'سال مالی ۱۴۰۴',
+        fiscalYearStartDate: '1404/01/01',
+        fiscalYearEndDate: '1404/12/29',
+        adminFullName: 'مهندس کامران رستمی',
+        adminMobile: '09129998877',
+        adminEmail: 'rostami@alborz-mfg.ir'
+      })
+      .expect(201);
+
+    expect(onboardingRes.body.success).toBe(true);
+    expect(onboardingRes.body.data.organizationId).toBeDefined();
+    expect(onboardingRes.body.data.defaultWarehouseId).toBeDefined();
+    expect(onboardingRes.body.data.assignedPlanId).toBe('plan-free-trial');
+    // باید حساب‌های معین اختصاصی صنف تولیدی درج شده باشد
+    expect(onboardingRes.body.data.initialAccountsCount).toBeGreaterThan(15);
+    expect(onboardingRes.body.data.subscription.status).toBe('TRIAL');
+  });
+
+  it('Step 74 (Phase 11): Should import legacy data (parties & products) and post balanced Opening Balance journal entry from Rahkaran/Sepidar', async () => {
+    // ۱. ایمپورت دسته‌ای طرف‌حساب‌ها از سپیدار سیستم
+    const legacyParties = [
+      {
+        code: 'SEP-CUST-101',
+        name: 'شرکت پترو تجهیز پارس',
+        partyType: 'LEGAL',
+        nationalId: '10100123456',
+        mobile: '09121234567',
+        creditLimit: '750000000'
+      },
+      {
+        code: 'SEP-SUPP-102',
+        name: 'صنایع فولاد آذرخش',
+        partyType: 'LEGAL',
+        nationalId: '10100123456',
+        mobile: '09127654321',
+        creditLimit: '1200000000'
+      }
+    ];
+
+    const partyMigRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/migration/parties')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        source: 'SEPIDAR',
+        rows: legacyParties
+      })
+      .expect(201);
+
+    expect(partyMigRes.body.success).toBe(true);
+    expect(partyMigRes.body.data.totalRows).toBe(2);
+    expect(partyMigRes.body.data.importedRows).toBe(2);
+    expect(partyMigRes.body.data.status).toBe('COMPLETED');
+
+    // ۲. ایمپورت دسته‌ای کالاها و خدمات از سپیدار
+    const legacyProducts = [
+      {
+        code: 'SEP-PROD-01',
+        name: 'کارتخوان بی‌سیم اندرویدی مدل X990',
+        barcode: '6261234567890',
+        unitTitle: 'دستگاه',
+        buyPrice: '38000000',
+        sellPrice: '48000000',
+        vatRate: '0.10'
+      }
+    ];
+
+    const prodMigRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/migration/products')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        source: 'SEPIDAR',
+        rows: legacyProducts
+      })
+      .expect(201);
+
+    expect(prodMigRes.body.success).toBe(true);
+    expect(prodMigRes.body.data.importedRows).toBe(1);
+
+    // ۳. رد سند افتتاحیه نامتعادل (اختلاف بدهکار و بستانکار)
+    const unbalancedOpeningRows = [
+      { subsidiaryCode: '1101', dimensionCode: 'dim-cash-1', debit: '100000000', credit: '0' },
+      { subsidiaryCode: '5101', debit: '0', credit: '150000000' } // ۵۰ میلیون ریال عدم تراز
+    ];
+
+    const unbalancedRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/migration/opening-balance')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        source: 'RAHKARAN',
+        fiscalYearId: 'fy-1403',
+        rows: unbalancedOpeningRows
+      })
+      .expect(400);
+
+    expect(unbalancedRes.body.message).toContain('سند افتتاحیه');
+
+    // ۴. ثبت سند افتتاحیه تراز و متوازن منتقل‌شده از راهکاران سیستم
+    const balancedOpeningRows = [
+      {
+        subsidiaryCode: '1101',
+        dimensionCode: 'dim-cash-1',
+        debit: '250000000',
+        credit: '0',
+        description: 'موجودی نقد افتتاحیه صندوق مرکزی در راهکاران'
+      },
+      {
+        subsidiaryCode: '1103',
+        dimensionCode: 'dim-bank-1',
+        debit: '750000000',
+        credit: '0',
+        description: 'موجودی افتتاحیه حساب بانک سامان در راهکاران'
+      },
+      {
+        subsidiaryCode: '5101',
+        debit: '0',
+        credit: '1000000000',
+        description: 'سرمایه اولیه ثبت‌شده سهامداران در راهکاران'
+      }
+    ];
+
+    const balancedRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/migration/opening-balance')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        source: 'RAHKARAN',
+        fiscalYearId: 'fy-1403',
+        rows: balancedOpeningRows
+      })
+      .expect(201);
+
+    expect(balancedRes.body.success).toBe(true);
+    expect(balancedRes.body.data.journalEntryId).toBeDefined();
+    expect(balancedRes.body.data.totalDebit).toBe('1000000000');
+    expect(balancedRes.body.data.totalCredit).toBe('1000000000');
+    expect(balancedRes.body.data.status).toBe('COMPLETED');
+  });
+
+  it('Step 75 (Phase 11): Should setup 2FA, verify TOTP token, log security audit event, and enforce Tenant Isolation Guard against cross-tenant access', async () => {
+    // ۱. راه‌اندازی و شروع تنظیم تایید دومرحله‌ای
+    const setup2faRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/security/2fa/setup')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(201);
+
+    expect(setup2faRes.body.success).toBe(true);
+    expect(setup2faRes.body.data.secret).toBeDefined();
+    expect(setup2faRes.body.data.otpAuthUrl).toContain('otpauth://totp/');
+    expect(setup2faRes.body.data.backupCodes.length).toBe(8);
+
+    const secret = setup2faRes.body.data.secret;
+    const currentStep = Math.floor(Math.floor(Date.now() / 1000) / 30);
+    const validToken = SecurityEngine.generateTotpForStep(secret, currentStep);
+
+    // ۲. اعتبارسنجی کد ۶ رقمی و فعال‌سازی قطعی 2FA
+    const verify2faRes = await request(app.getHttpServer())
+      .post('/api/v1/saas/security/2fa/verify')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({ token: validToken })
+      .expect(201);
+
+    expect(verify2faRes.body.success).toBe(true);
+    expect(verify2faRes.body.data.message).toContain('تایید دومرحله‌ای');
+
+    // ۳. استعلام لاگ‌های امنیتی سازمان (Security Audit Logs)
+    const auditRes = await request(app.getHttpServer())
+      .get('/api/v1/saas/security/audit-logs')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(auditRes.body.success).toBe(true);
+    expect(auditRes.body.data.length).toBeGreaterThan(0);
+    expect(auditRes.body.data.some((l: any) => l.action_type === '2FA_ENABLED')).toBe(true);
+
+    // ۴. آزمون گارد تفکیک امنیتی چندمستاجری (Tenant Isolation Guard)
+    // تلاش برای دسترسی به سازمان دیگر (باید ۴۰۳ بازگرداند)
+    await request(app.getHttpServer())
+      .get('/api/v1/saas/security/tenant-check')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-other-hacker')
+      .expect(403);
+
+    // دسترسی مجاز با شناسه سازمان معتبر کاربر
+    const allowedTenantRes = await request(app.getHttpServer())
+      .get('/api/v1/saas/security/tenant-check')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .expect(200);
+
+    expect(allowedTenantRes.body.success).toBe(true);
+    expect(allowedTenantRes.body.data.status).toBe('ISOLATED_OK');
   });
 
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {

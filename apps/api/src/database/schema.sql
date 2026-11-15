@@ -1718,6 +1718,111 @@ CREATE INDEX IF NOT EXISTS idx_online_orders_status ON online_orders(tenant_id, 
 CREATE INDEX IF NOT EXISTS idx_visitor_visits_user ON visitor_visits(tenant_id, visitor_user_id, visit_date_shamsi);
 CREATE INDEX IF NOT EXISTS idx_attendance_logs_emp ON attendance_logs(tenant_id, employee_id, log_date_shamsi);
 
+-- =========================================================================
+-- بخش یازدهم: زیرساخت ابری SaaS، اشتراک، امنیت، مهاجرت و چندمستاجری (Phase 11)
+-- =========================================================================
+
+-- ۶۵. پلن‌های اشتراک ابری پلتفرم (SaaS Plans)
+CREATE TABLE IF NOT EXISTS saas_plans (
+    id TEXT PRIMARY KEY,
+    code TEXT UNIQUE NOT NULL,
+    name_fa TEXT NOT NULL,
+    tier TEXT NOT NULL, -- FREE, STARTER, PRO, ENTERPRISE
+    monthly_price TEXT NOT NULL DEFAULT '0',
+    yearly_price TEXT NOT NULL DEFAULT '0',
+    max_users INTEGER NOT NULL DEFAULT 1,
+    max_branches INTEGER NOT NULL DEFAULT 1,
+    max_monthly_transactions INTEGER NOT NULL DEFAULT 500,
+    allowed_modules_json TEXT NOT NULL, -- JSON array of module names
+    has_api_access INTEGER NOT NULL DEFAULT 0,
+    has_audit_chain_verification INTEGER NOT NULL DEFAULT 1,
+    storage_quota_mb INTEGER NOT NULL DEFAULT 100,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
+-- ۶۶. اشتراک‌های سازمان‌ها (Tenant Subscriptions)
+CREATE TABLE IF NOT EXISTS tenant_subscriptions (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    status TEXT NOT NULL, -- TRIAL, ACTIVE, EXPIRED, CANCELLED, GRACE_PERIOD
+    started_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    auto_renew INTEGER NOT NULL DEFAULT 1,
+    billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY', -- MONTHLY, YEARLY
+    payment_reference TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (organization_id) REFERENCES tenants(id),
+    FOREIGN KEY (plan_id) REFERENCES saas_plans(id)
+);
+
+-- ۶۷. ردیابی مصرف سهمیه‌های ماه جاری مستاجرین (Tenant Usage Quotas)
+CREATE TABLE IF NOT EXISTS tenant_usage_quotas (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    period_month TEXT NOT NULL, -- YYYY-MM
+    current_transactions INTEGER NOT NULL DEFAULT 0,
+    current_users INTEGER NOT NULL DEFAULT 1,
+    current_storage_mb INTEGER NOT NULL DEFAULT 10,
+    last_updated_at TEXT NOT NULL,
+    FOREIGN KEY (organization_id) REFERENCES tenants(id),
+    UNIQUE (organization_id, period_month)
+);
+
+-- ۶۸. تاریخچه و لاگ دسته‌های مهاجرت داده از سیستم‌های سنتی (Data Migration Batches)
+CREATE TABLE IF NOT EXISTS data_migration_batches (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    source_system TEXT NOT NULL, -- SEPIDAR, RAHKARAN, CUSTOM_EXCEL
+    entity_type TEXT NOT NULL, -- ACCOUNTS, PARTIES, PRODUCTS, OPENING_BALANCES
+    file_name TEXT,
+    total_rows INTEGER NOT NULL DEFAULT 0,
+    imported_rows INTEGER NOT NULL DEFAULT 0,
+    failed_rows INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL, -- PENDING, COMPLETED, FAILED, PARTIAL
+    error_log_json TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (organization_id) REFERENCES tenants(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- ۶۹. تنظیمات امنیتی کاربران و تایید دومرحله‌ای (User Security Settings & 2FA)
+CREATE TABLE IF NOT EXISTS user_security_settings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT UNIQUE NOT NULL,
+    two_factor_enabled INTEGER NOT NULL DEFAULT 0,
+    two_factor_secret TEXT,
+    backup_codes_json TEXT,
+    last_password_change TEXT,
+    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ۷۰. لاگ وقایع امنیتی حساس (Security Audit Logs)
+CREATE TABLE IF NOT EXISTS security_audit_logs (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    action_type TEXT NOT NULL, -- LOGIN, FAILED_LOGIN, 2FA_ENABLED, 2FA_DISABLED, PASSWORD_RESET, DATA_EXPORT, SETTINGS_CHANGE
+    ip_address TEXT NOT NULL,
+    user_agent TEXT,
+    status TEXT NOT NULL, -- SUCCESS, FAILED, BLOCKED
+    details_json TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (organization_id) REFERENCES tenants(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_sub_org ON tenant_subscriptions(organization_id, status);
+CREATE INDEX IF NOT EXISTS idx_tenant_usage_period ON tenant_usage_quotas(organization_id, period_month);
+CREATE INDEX IF NOT EXISTS idx_migration_batch_org ON data_migration_batches(organization_id, entity_type);
+CREATE INDEX IF NOT EXISTS idx_sec_audit_org_user ON security_audit_logs(organization_id, user_id, action_type);
+
 
 
 

@@ -1459,6 +1459,157 @@ export async function runSeed() {
 
   console.log('[Seed Phase 10] Phase 10 hardware terminals and attendance logs seeded successfully.');
 
+  // =========================================================================
+  // فاز ۱۱: بذر اولیه زیرساخت SaaS، اشتراک‌ها، سهمیه‌ها و تنظیمات امنیتی
+  // =========================================================================
+  console.log('[Seed Phase 11] Seeding SaaS Plans, Tenant Subscriptions, Usage Quotas and Security Baseline...');
+
+  // ۱. پلن‌های استاندارد
+  const saasPlans = [
+    {
+      id: 'plan-free-trial',
+      code: 'TRIAL',
+      nameFa: 'نسخه آزمایشی رایگان (۱۴ روزه)',
+      tier: 'FREE',
+      monthlyPrice: '0',
+      yearlyPrice: '0',
+      maxUsers: 1,
+      maxBranches: 1,
+      maxMonthlyTransactions: 200,
+      allowedModules: ['GENERAL_LEDGER', 'TREASURY', 'INVENTORY', 'SALES'],
+      hasApiAccess: 0,
+      hasAuditChainVerification: 1,
+      storageQuotaMb: 100
+    },
+    {
+      id: 'plan-starter',
+      code: 'STARTER',
+      nameFa: 'پایه کسب‌وکار و فروشگاهی',
+      tier: 'STARTER',
+      monthlyPrice: '4500000',
+      yearlyPrice: '45000000',
+      maxUsers: 5,
+      maxBranches: 2,
+      maxMonthlyTransactions: 2000,
+      allowedModules: ['GENERAL_LEDGER', 'TREASURY', 'INVENTORY', 'SALES', 'MOADIAN', 'POS'],
+      hasApiAccess: 0,
+      hasAuditChainVerification: 1,
+      storageQuotaMb: 1024
+    },
+    {
+      id: 'plan-pro',
+      code: 'PRO',
+      nameFa: 'حرفه‌ای و چندشعبه‌ای (تولیدی و رستورانی)',
+      tier: 'PRO',
+      monthlyPrice: '12000000',
+      yearlyPrice: '120000000',
+      maxUsers: 20,
+      maxBranches: 10,
+      maxMonthlyTransactions: 15000,
+      allowedModules: [
+        'GENERAL_LEDGER',
+        'TREASURY',
+        'INVENTORY',
+        'SALES',
+        'MOADIAN',
+        'POS',
+        'RESTAURANT',
+        'MANUFACTURING',
+        'PAYROLL',
+        'FIXED_ASSETS',
+        'OMNICHANNEL'
+      ],
+      hasApiAccess: 1,
+      hasAuditChainVerification: 1,
+      storageQuotaMb: 10240
+    },
+    {
+      id: 'plan-enterprise',
+      code: 'ENTERPRISE',
+      nameFa: 'سازمانی و هلدینگ (نامحدود)',
+      tier: 'ENTERPRISE',
+      monthlyPrice: '35000000',
+      yearlyPrice: '350000000',
+      maxUsers: 9999,
+      maxBranches: 9999,
+      maxMonthlyTransactions: 9999999,
+      allowedModules: [
+        'GENERAL_LEDGER',
+        'TREASURY',
+        'INVENTORY',
+        'SALES',
+        'MOADIAN',
+        'POS',
+        'RESTAURANT',
+        'MANUFACTURING',
+        'PAYROLL',
+        'FIXED_ASSETS',
+        'BI_REPORTS',
+        'OMNICHANNEL',
+        'INTEGRATION_API'
+      ],
+      hasApiAccess: 1,
+      hasAuditChainVerification: 1,
+      storageQuotaMb: 102400
+    }
+  ];
+
+  for (const p of saasPlans) {
+    await run(
+      `INSERT OR REPLACE INTO saas_plans (
+        id, code, name_fa, tier, monthly_price, yearly_price, max_users, max_branches,
+        max_monthly_transactions, allowed_modules_json, has_api_access,
+        has_audit_chain_verification, storage_quota_mb, is_active, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      [
+        p.id,
+        p.code,
+        p.nameFa,
+        p.tier,
+        p.monthlyPrice,
+        p.yearlyPrice,
+        p.maxUsers,
+        p.maxBranches,
+        p.maxMonthlyTransactions,
+        JSON.stringify(p.allowedModules),
+        p.hasApiAccess,
+        p.hasAuditChainVerification,
+        p.storageQuotaMb,
+        now
+      ]
+    );
+  }
+
+  // ۲. اشتراک فعال سازمان اصلی (org-default)
+  const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+  await run(
+    `INSERT OR REPLACE INTO tenant_subscriptions (
+      id, organization_id, plan_id, status, started_at, expires_at, auto_renew,
+      billing_cycle, payment_reference, created_at, updated_at
+    ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, 1, 'YEARLY', 'SHP-SUB-1403-001', ?, ?)`,
+    ['sub-active-default', tenantId, 'plan-pro', now, oneYearFromNow, now, now]
+  );
+
+  // ۳. سهمیه و متغیرهای مصرف ماه جاری
+  await run(
+    `INSERT OR REPLACE INTO tenant_usage_quotas (
+      id, organization_id, period_month, current_transactions, current_users,
+      current_storage_mb, last_updated_at
+    ) VALUES (?, ?, '1403-12', 145, 4, 85, ?)`,
+    ['quota-default-1403-12', tenantId, now]
+  );
+
+  // ۴. تنظیمات امنیتی پایه کاربر ادمین (۲FA آماده و غیرفعال)
+  await run(
+    `INSERT OR REPLACE INTO user_security_settings (
+      id, user_id, two_factor_enabled, two_factor_secret, backup_codes_json,
+      last_password_change, failed_login_attempts, locked_until, updated_at
+    ) VALUES (?, ?, 0, 'JBSWY3DPEHPK3PXP', ?, ?, 0, NULL, ?)`,
+    ['sec-user-admin-1', 'user-admin-1', JSON.stringify(['A1B2C3D4', 'E5F6G7H8']), now, now]
+  );
+
+  console.log('[Seed Phase 11] SaaS plans, subscriptions, quotas and security settings seeded successfully.');
+
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();
 }

@@ -20,6 +20,7 @@ import { FixedAssetsModule } from './modules/fixed-assets/fixed-assets.module';
 import { TaxReportsModule } from './modules/tax-reports/tax-reports.module';
 import { FinancialReportsModule } from './modules/financial-reports/financial-reports.module';
 import { OmnichannelModule } from './modules/omnichannel/omnichannel.module';
+import { SaaSModule } from './modules/saas/saas.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { OmnichannelModule } from './modules/omnichannel/omnichannel.module';
     TaxReportsModule,
     FinancialReportsModule,
     OmnichannelModule,
+    SaaSModule,
     RulesModule,
     AuditModule
   ],

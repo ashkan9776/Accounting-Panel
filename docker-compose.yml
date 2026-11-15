@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: accounting_saas_api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_PATH=/app/apps/api/storage/accounting.db
+      - JWT_SECRET=ProductionSuperSecretKey_Accounting_SaaS_2026_Secure
+      - JWT_EXPIRES_IN=7d
+    volumes:
+      - api_storage:/app/apps/api/storage
+    networks:
+      - accounting_net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/saas/plans"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  nginx:
+    image: nginx:alpine
+    container_name: accounting_saas_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - accounting_net
+
+volumes:
+  api_storage:
+    driver: local
+
+networks:
+  accounting_net:
+    driver: bridge

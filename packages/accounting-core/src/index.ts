@@ -38,5 +38,6 @@ export * from './assets';
 export * from './tax-reporting';
 export * from './financial-statements';
 export * from './omnichannel';
+export * from './saas';
 
 
