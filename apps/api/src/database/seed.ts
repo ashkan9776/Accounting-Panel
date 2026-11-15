@@ -67,6 +67,22 @@ export async function runSeed() {
     DELETE FROM pos_cash_movements;
     DELETE FROM pos_shifts;
     DELETE FROM pos_terminals;
+    DELETE FROM restaurant_deliveries;
+    DELETE FROM restaurant_order_items;
+    DELETE FROM restaurant_kds_tickets;
+    DELETE FROM restaurant_orders;
+    DELETE FROM restaurant_recipe_items;
+    DELETE FROM restaurant_recipes;
+    DELETE FROM restaurant_tables;
+    DELETE FROM restaurant_sections;
+    DELETE FROM manufacturing_scraps;
+    DELETE FROM manufacturing_order_operations;
+    DELETE FROM manufacturing_order_materials;
+    DELETE FROM manufacturing_production_orders;
+    DELETE FROM manufacturing_routings;
+    DELETE FROM manufacturing_bom_items;
+    DELETE FROM manufacturing_boms;
+    DELETE FROM manufacturing_work_centers;
   `);
   console.log('[Seed] Schema applied and tables initialized successfully.');
 
@@ -930,6 +946,157 @@ export async function runSeed() {
   );
 
   console.log('[Seed Phase 6] Restaurant baseline seeded successfully.');
+
+  // ==========================================
+  // فاز ۷: ماژول جامع تولید و بهای تمام‌شده (Manufacturing Baseline)
+  // ==========================================
+  // ۱. مراکز کاری تولید
+  const workCenters = [
+    {
+      id: 'wc-assembly',
+      code: 'WC-101',
+      name: 'مرکز کاری مونتاژ و لحیم‌کاری بردهای الکترونیک',
+      department: 'مونتاژ سخت‌افزار',
+      laborRate: '2500000',
+      overheadRate: '1500000'
+    },
+    {
+      id: 'wc-qc-packaging',
+      code: 'WC-102',
+      name: 'مرکز کاری تست نهایی، کنترل کیفیت و بسته‌بندی',
+      department: 'کنترل کیفیت و بسته‌بندی',
+      laborRate: '2000000',
+      overheadRate: '1000000'
+    }
+  ];
+
+  for (const wc of workCenters) {
+    await run(
+      `INSERT OR REPLACE INTO manufacturing_work_centers (
+        id, tenant_id, company_id, code, name, department,
+        capacity_hours_per_day, labor_hourly_rate, overhead_hourly_rate, is_active, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, '8', ?, ?, 1, ?)`,
+      [wc.id, tenantId, companyId, wc.code, wc.name, wc.department, wc.laborRate, wc.overheadRate, now]
+    );
+  }
+
+  // ۲. قطعات و مواد اولیه صنعتی تولید کارتخوان
+  const mfgComponents = [
+    { id: 'comp-mainboard', code: 'COMP-MB-900', name: 'برد پردازنده و تراشه مرکزی پوز X-900', cost: '15000000' },
+    { id: 'comp-touchscreen', code: 'COMP-LCD-55', name: 'نمایشگر لمسی ۵.۵ اینچ IPS صنعتی', cost: '8000000' },
+    { id: 'comp-thermal-printer', code: 'COMP-PRN-58', name: 'ماژول پرینتر حرارتی ۵۸ میلی‌متری سریع', cost: '5000000' },
+    { id: 'comp-chassis', code: 'COMP-CASE-01', name: 'قاب و شاسی پلی‌کربنات ضدضربه پوز', cost: '3000000' },
+    { id: 'comp-battery', code: 'COMP-BAT-5200', name: 'باتری لیتیومی ۵۲۰۰ میلی‌آمپر صنعتی پوز', cost: '4000000' }
+  ];
+
+  for (const comp of mfgComponents) {
+    await run(
+      `INSERT OR REPLACE INTO products (
+        id, tenant_id, company_id, category_id, unit_id, code, name, type,
+        barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+        sell_price, purchase_price, is_active, created_at
+      ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', ?, ?, 'GOODS', NULL, 0, '0.10', 'MOVING_AVERAGE', '10', '1000', '0', ?, 1, ?)`,
+      [comp.id, tenantId, companyId, comp.code, comp.name, comp.cost, now]
+    );
+
+    // موجودی ۵۰۰ عددی قطعات اولیه در انبار مواد wh-main
+    await run(
+      `INSERT OR REPLACE INTO stock_ledger_entries (
+        id, tenant_id, company_id, warehouse_id, product_id, variant_id,
+        document_type, document_id, document_number, date_shamsi,
+        in_quantity, in_unit_cost, in_total_cost,
+        out_quantity, out_unit_cost, out_total_cost,
+        balance_quantity, balance_unit_cost, balance_total_cost,
+        created_at
+      ) VALUES (
+        ?, ?, ?, 'wh-main', ?, NULL,
+        'INITIAL_BALANCE', 'init-mfg-comp', 'INIT-MFG-01', '1403/01/01',
+        '500', ?, ?,
+        '0', '0', '0',
+        '500', ?, ?,
+        ?
+      )`,
+      [
+        `stk-init-${comp.id}`,
+        tenantId,
+        companyId,
+        comp.id,
+        comp.cost,
+        (Number(comp.cost) * 500).toString(),
+        comp.cost,
+        (Number(comp.cost) * 500).toString(),
+        now
+      ]
+    );
+  }
+
+  // ۳. محصول نهایی تولیدی: پوز اندرویدی پیشرو مدل X-900
+  await run(
+    `INSERT OR REPLACE INTO products (
+      id, tenant_id, company_id, category_id, unit_id, code, name, type,
+      barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
+      sell_price, purchase_price, is_active, created_at
+    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'PROD-POS-X900', 'کارتخوان هوشمند لمسی پیشرو مدل X-900', 'GOODS', '6260000009001', 0, '0.10', 'MOVING_AVERAGE', '5', '500', '55000000', '37890000', 1, ?)`,
+    ['prod-smart-pos', tenantId, companyId, now]
+  );
+
+  // ۴. فرمول ساخت (BOM) استاندارد
+  await run(
+    `INSERT OR REPLACE INTO manufacturing_boms (
+      id, tenant_id, company_id, product_id, bom_code, bom_name, version,
+      base_quantity, is_default, is_active,
+      standard_material_cost, standard_labor_cost, standard_overhead_cost, standard_total_cost,
+      description, created_at, updated_at
+    ) VALUES (
+      'bom-smart-pos-v1', ?, ?, 'prod-smart-pos', 'BOM-POS-X900-V1', 'فرمول ساخت استاندارد کارتخوان لمسی X-900', '1.0',
+      '1', 1, 1,
+      '35140000', '1750000', '1000000', '37890000',
+      'فرمول استاندارد کارخانه‌ای شامل قطعات، مونتاژ، تست نهایی و ضایعات عادی',
+      ?, ?
+    )`,
+    [tenantId, companyId, now, now]
+  );
+
+  // ۵. اقلام فرمول ساخت با درصد ضایعات عادی مجاز
+  const bomItems = [
+    { id: 'bi-01', compId: 'comp-mainboard', qty: '1', scrap: '0' },
+    { id: 'bi-02', compId: 'comp-touchscreen', qty: '1', scrap: '1' },
+    { id: 'bi-03', compId: 'comp-thermal-printer', qty: '1', scrap: '0' },
+    { id: 'bi-04', compId: 'comp-chassis', qty: '1', scrap: '2' },
+    { id: 'bi-05', compId: 'comp-battery', qty: '1', scrap: '0' }
+  ];
+  for (const item of bomItems) {
+    await run(
+      `INSERT OR REPLACE INTO manufacturing_bom_items (
+        id, bom_id, component_product_id, quantity, scrap_percentage, is_sub_assembly, line_order, created_at
+      ) VALUES (?, 'bom-smart-pos-v1', ?, ?, ?, 0, 1, ?)`,
+      [item.id, item.compId, item.qty, item.scrap, now]
+    );
+  }
+
+  // ۶. مراحل روتینگ و ایستگاه‌های عملیات
+  await run(
+    `INSERT OR REPLACE INTO manufacturing_routings (
+      id, bom_id, work_center_id, step_number, operation_name,
+      setup_time_hours, run_time_hours_per_unit, labor_hours_per_unit, machine_hours_per_unit, created_at
+    ) VALUES (
+      'route-01', 'bom-smart-pos-v1', 'wc-assembly', 1, 'مونتاژ برد، ماژول‌ها و اتصالات سخت‌افزاری',
+      '0.1', '0.5', '0.5', '0.5', ?
+    )`,
+    [now]
+  );
+  await run(
+    `INSERT OR REPLACE INTO manufacturing_routings (
+      id, bom_id, work_center_id, step_number, operation_name,
+      setup_time_hours, run_time_hours_per_unit, labor_hours_per_unit, machine_hours_per_unit, created_at
+    ) VALUES (
+      'route-02', 'bom-smart-pos-v1', 'wc-qc-packaging', 2, 'تست کنترل کیفیت سخت‌افزار، کالیبراسیون و بسته‌بندی',
+      '0.05', '0.25', '0.25', '0.25', ?
+    )`,
+    [now]
+  );
+
+  console.log('[Seed Phase 7] Manufacturing baseline seeded successfully.');
 
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();

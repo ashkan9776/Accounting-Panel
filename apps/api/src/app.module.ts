@@ -14,6 +14,7 @@ import { SalesModule } from './modules/sales/sales.module';
 import { MoadianModule } from './modules/moadian/moadian.module';
 import { PosModule } from './modules/pos/pos.module';
 import { RestaurantModule } from './modules/restaurant/restaurant.module';
+import { ManufacturingModule } from './modules/manufacturing/manufacturing.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { RestaurantModule } from './modules/restaurant/restaurant.module';
     MoadianModule,
     PosModule,
     RestaurantModule,
+    ManufacturingModule,
     RulesModule,
     AuditModule
   ],

@@ -1190,6 +1190,178 @@ CREATE INDEX IF NOT EXISTS idx_rest_tables_status ON restaurant_tables(tenant_id
 CREATE INDEX IF NOT EXISTS idx_rest_orders_status ON restaurant_orders(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_rest_kds_station ON restaurant_kds_tickets(tenant_id, station, status);
 
+-- ۴۱. مراکز کاری تولید (Manufacturing Work Centers)
+CREATE TABLE IF NOT EXISTS manufacturing_work_centers (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    department TEXT,
+    capacity_hours_per_day TEXT DEFAULT '8',
+    labor_hourly_rate TEXT DEFAULT '0',
+    overhead_hourly_rate TEXT DEFAULT '0',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+-- ۴۲. فرمول‌های ساخت محصول (Bill of Materials - BOM)
+CREATE TABLE IF NOT EXISTS manufacturing_boms (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    bom_code TEXT NOT NULL,
+    bom_name TEXT NOT NULL,
+    version TEXT DEFAULT '1.0',
+    base_quantity TEXT DEFAULT '1',
+    is_default INTEGER DEFAULT 1,
+    is_active INTEGER DEFAULT 1,
+    standard_material_cost TEXT DEFAULT '0',
+    standard_labor_cost TEXT DEFAULT '0',
+    standard_overhead_cost TEXT DEFAULT '0',
+    standard_total_cost TEXT DEFAULT '0',
+    description TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- ۴۳. اقلام مواد فرمول ساخت (BOM Items)
+CREATE TABLE IF NOT EXISTS manufacturing_bom_items (
+    id TEXT PRIMARY KEY,
+    bom_id TEXT NOT NULL,
+    component_product_id TEXT NOT NULL,
+    quantity TEXT NOT NULL,
+    scrap_percentage TEXT DEFAULT '0',
+    is_sub_assembly INTEGER DEFAULT 0,
+    sub_bom_id TEXT,
+    substitute_product_id TEXT,
+    line_order INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (bom_id) REFERENCES manufacturing_boms(id) ON DELETE CASCADE,
+    FOREIGN KEY (component_product_id) REFERENCES products(id),
+    FOREIGN KEY (sub_bom_id) REFERENCES manufacturing_boms(id),
+    FOREIGN KEY (substitute_product_id) REFERENCES products(id)
+);
+
+-- ۴۴. مراحل و ایستگاه‌های عملیات ساخت (Manufacturing Routings)
+CREATE TABLE IF NOT EXISTS manufacturing_routings (
+    id TEXT PRIMARY KEY,
+    bom_id TEXT NOT NULL,
+    work_center_id TEXT NOT NULL,
+    step_number INTEGER NOT NULL,
+    operation_name TEXT NOT NULL,
+    setup_time_hours TEXT DEFAULT '0',
+    run_time_hours_per_unit TEXT DEFAULT '0',
+    labor_hours_per_unit TEXT DEFAULT '0',
+    machine_hours_per_unit TEXT DEFAULT '0',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (bom_id) REFERENCES manufacturing_boms(id) ON DELETE CASCADE,
+    FOREIGN KEY (work_center_id) REFERENCES manufacturing_work_centers(id)
+);
+
+-- ۴۵. سفارشات تولید / دستور کار (Production Orders)
+CREATE TABLE IF NOT EXISTS manufacturing_production_orders (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    order_number TEXT NOT NULL,
+    date_shamsi TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    bom_id TEXT NOT NULL,
+    raw_material_warehouse_id TEXT NOT NULL,
+    finished_goods_warehouse_id TEXT NOT NULL,
+    planned_quantity TEXT NOT NULL,
+    produced_quantity TEXT DEFAULT '0',
+    rejected_quantity TEXT DEFAULT '0',
+    normal_scrap_quantity TEXT DEFAULT '0',
+    abnormal_scrap_quantity TEXT DEFAULT '0',
+    status TEXT DEFAULT 'DRAFT', -- DRAFT, RELEASED, IN_PROGRESS, COMPLETED, CLOSED, CANCELLED
+    costing_method TEXT DEFAULT 'JOB_ORDER', -- JOB_ORDER, PROCESS_COSTING
+    actual_material_cost TEXT DEFAULT '0',
+    actual_labor_cost TEXT DEFAULT '0',
+    actual_overhead_cost TEXT DEFAULT '0',
+    actual_total_cost TEXT DEFAULT '0',
+    unit_cost TEXT DEFAULT '0',
+    material_issue_journal_entry_id TEXT,
+    labor_overhead_journal_entry_id TEXT,
+    completion_journal_entry_id TEXT,
+    abnormal_scrap_journal_entry_id TEXT,
+    variance_journal_entry_id TEXT,
+    stock_receipt_document_id TEXT,
+    start_date_shamsi TEXT,
+    completion_date_shamsi TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    FOREIGN KEY (bom_id) REFERENCES manufacturing_boms(id),
+    FOREIGN KEY (raw_material_warehouse_id) REFERENCES warehouses(id),
+    FOREIGN KEY (finished_goods_warehouse_id) REFERENCES warehouses(id)
+);
+
+-- ۴۶. مواد مصرفی سفارش تولید (Production Order Materials)
+CREATE TABLE IF NOT EXISTS manufacturing_order_materials (
+    id TEXT PRIMARY KEY,
+    production_order_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    planned_quantity TEXT NOT NULL,
+    actual_issued_quantity TEXT DEFAULT '0',
+    unit_cost TEXT DEFAULT '0',
+    total_cost TEXT DEFAULT '0',
+    stock_issue_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (production_order_id) REFERENCES manufacturing_production_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- ۴۷. کارکرد واقعی مراکز کاری در سفارش تولید (Production Order Operations)
+CREATE TABLE IF NOT EXISTS manufacturing_order_operations (
+    id TEXT PRIMARY KEY,
+    production_order_id TEXT NOT NULL,
+    work_center_id TEXT NOT NULL,
+    operation_name TEXT NOT NULL,
+    actual_labor_hours TEXT DEFAULT '0',
+    labor_hourly_rate TEXT DEFAULT '0',
+    actual_labor_cost TEXT DEFAULT '0',
+    actual_machine_hours TEXT DEFAULT '0',
+    overhead_hourly_rate TEXT DEFAULT '0',
+    actual_overhead_cost TEXT DEFAULT '0',
+    recorded_date_shamsi TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (production_order_id) REFERENCES manufacturing_production_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (work_center_id) REFERENCES manufacturing_work_centers(id)
+);
+
+-- ۴۸. ضایعات تولید (Production Scraps)
+CREATE TABLE IF NOT EXISTS manufacturing_scraps (
+    id TEXT PRIMARY KEY,
+    production_order_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    scrap_type TEXT NOT NULL, -- NORMAL, ABNORMAL
+    quantity TEXT NOT NULL,
+    estimated_cost TEXT DEFAULT '0',
+    reason TEXT,
+    date_shamsi TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (production_order_id) REFERENCES manufacturing_production_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mfg_boms_product ON manufacturing_boms(tenant_id, product_id);
+CREATE INDEX IF NOT EXISTS idx_mfg_orders_status ON manufacturing_production_orders(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_mfg_order_materials_order ON manufacturing_order_materials(production_order_id);
+
+
 
 
 

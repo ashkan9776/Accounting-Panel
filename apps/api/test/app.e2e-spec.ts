@@ -20,6 +20,7 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
   let createdDeliveryOrderId: string;
   let createdKdsHotTicketId: string;
   let createdDeliveryId: string;
+  let createdProductionOrderId: string;
 
   beforeAll(async () => {
     await runSeed();
@@ -1395,6 +1396,280 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     expect(settleCourierRes.body.success).toBe(true);
     expect(settleCourierRes.body.data.settledCount).toBe(1);
     expect(settleCourierRes.body.data.totalCashToHandover).toBe('2280000');
+  });
+
+  // ==========================================
+  // آزمون‌های فاز ۷: ماژول جامع تولید و بهای تمام‌شده (Manufacturing & Cost Accounting)
+  // ==========================================
+
+  it('Step 42 (Phase 7): Should retrieve Work Centers and verify hourly rates', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/manufacturing/work-centers')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+
+    const assembly = res.body.data.find((w: any) => w.id === 'wc-assembly');
+    expect(assembly).toBeDefined();
+    expect(assembly.labor_hourly_rate).toBe('2500000');
+    expect(assembly.overhead_hourly_rate).toBe('1500000');
+
+    const qc = res.body.data.find((w: any) => w.id === 'wc-qc-packaging');
+    expect(qc).toBeDefined();
+    expect(qc.labor_hourly_rate).toBe('2000000');
+    expect(qc.overhead_hourly_rate).toBe('1000000');
+  });
+
+  it('Step 43 (Phase 7): Should explode Bill of Materials (BOM) with normal scrap allowances and calculate standard cost', async () => {
+    // ۱. انفجار فرمول ساخت برای تولید ۱۰ دستگاه پوز هوشمند
+    const explodeRes = await request(app.getHttpServer())
+      .post('/api/v1/manufacturing/boms/bom-smart-pos-v1/explode')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({ quantity: 10 })
+      .expect(201);
+
+    expect(explodeRes.body.success).toBe(true);
+    expect(explodeRes.body.data.orderQuantity).toBe('10');
+    expect(explodeRes.body.data.materials.length).toBe(5);
+
+    // بررسی محاسبه ضایعات عادی در مقدار مورد نیاز
+    const touchscreen = explodeRes.body.data.materials.find((m: any) => m.productId === 'comp-touchscreen');
+    expect(touchscreen).toBeDefined();
+    expect(touchscreen.requiredQuantity).toBe('10.100'); // ۱٪ ضایعات مجاز
+
+    const chassis = explodeRes.body.data.materials.find((m: any) => m.productId === 'comp-chassis');
+    expect(chassis).toBeDefined();
+    expect(chassis.requiredQuantity).toBe('10.200'); // ۲٪ ضایعات مجاز
+
+    // ۲. استعلام بهای تمام‌شده استاندارد یک واحد محصول
+    const stdCostRes = await request(app.getHttpServer())
+      .get('/api/v1/manufacturing/boms/bom-smart-pos-v1/standard-cost')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(stdCostRes.body.success).toBe(true);
+    expect(Number(stdCostRes.body.data.unitStandardMaterialCost)).toBeGreaterThan(35000000);
+    expect(Number(stdCostRes.body.data.unitStandardLaborCost)).toBe(2100000);
+    expect(Number(stdCostRes.body.data.unitStandardOverheadCost)).toBe(1200000);
+    expect(Number(stdCostRes.body.data.unitTotalStandardCost)).toBe(
+      Number(stdCostRes.body.data.unitStandardMaterialCost) + 2100000 + 1200000
+    );
+  });
+
+  it('Step 44 (Phase 7): Should create Production Order for 10 Smart POS and issue materials to WIP with double-entry voucher', async () => {
+    // ۱. ایجاد و صدور سفارش تولید (Release Work Order)
+    const orderRes = await request(app.getHttpServer())
+      .post('/api/v1/manufacturing/orders')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        productId: 'prod-smart-pos',
+        bomId: 'bom-smart-pos-v1',
+        rawMaterialWarehouseId: 'wh-main',
+        finishedGoodsWarehouseId: 'wh-main',
+        plannedQuantity: 10,
+        dateShamsi: '1403/11/26',
+        costingMethod: 'JOB_ORDER',
+        notes: 'دستور کار ساخت سری اول کارتخوان‌های اندرویدی هوشمند پیشرو مدل X-900'
+      })
+      .expect(201);
+
+    expect(orderRes.body.success).toBe(true);
+    createdProductionOrderId = orderRes.body.data.id;
+    expect(orderRes.body.data.status).toBe('RELEASED');
+    expect(orderRes.body.data.materials.length).toBe(5);
+
+    // ۲. صدور حواله خروج مواد اولیه به خط تولید و شارژ حساب در جریان ساخت (WIP - ۱۵۰۳)
+    const issueRes = await request(app.getHttpServer())
+      .post(`/api/v1/manufacturing/orders/${createdProductionOrderId}/issue-materials`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        dateShamsi: '1403/11/26'
+      })
+      .expect(201);
+
+    expect(issueRes.body.success).toBe(true);
+    expect(Number(issueRes.body.data.totalMaterialCost)).toBeGreaterThan(350000000);
+    expect(issueRes.body.data.journalEntry).toBeDefined();
+
+    // سند حسابداری خروج مواد باید دارای بدهکار ۱۵۰۳ و بستانکار ۱۵۰۲ باشد
+    const jLines = issueRes.body.data.journalEntry.lines;
+    const debitWip = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1503');
+    const creditRaw = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1502');
+    expect(debitWip).toBeDefined();
+    expect(creditRaw).toBeDefined();
+    expect(debitWip.debit).toBe(issueRes.body.data.totalMaterialCost);
+    expect(creditRaw.credit).toBe(issueRes.body.data.totalMaterialCost);
+
+    // بررسی کسر موجودی قطعات از کاردکس انبار مرکزی مواد
+    const kardexRes = await request(app.getHttpServer())
+      .get('/api/v1/inventory/kardex?warehouseId=wh-main&productId=comp-mainboard')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    const latest = kardexRes.body.data[kardexRes.body.data.length - 1];
+    expect(latest.document_type).toBe('ISSUE');
+    expect(latest.out_quantity).toBe('10');
+    expect(latest.balance_quantity).toBe('490'); // موجودی اولیه ۵۰۰ منهای ۱۰ عدد مصرف خط
+  });
+
+  it('Step 45 (Phase 7): Should record operation work, direct labor and applied overhead with absorption voucher', async () => {
+    // ثبت کارکرد ۵ ساعت مونتاژ و ۲.۵ ساعت تست و کنترل کیفیت
+    const opRes = await request(app.getHttpServer())
+      .post(`/api/v1/manufacturing/orders/${createdProductionOrderId}/record-operation`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        operations: [
+          {
+            workCenterId: 'wc-assembly',
+            operationName: 'مونتاژ برد، ماژول‌ها و پرینتر حرارتی',
+            actualLaborHours: 5,
+            actualMachineHours: 5,
+            recordedDateShamsi: '1403/11/26'
+          },
+          {
+            workCenterId: 'wc-qc-packaging',
+            operationName: 'تست سخت‌افزاری و بسته‌بندی نهایی',
+            actualLaborHours: 2.5,
+            actualMachineHours: 2.5,
+            recordedDateShamsi: '1403/11/26'
+          }
+        ]
+      })
+      .expect(201);
+
+    expect(opRes.body.success).toBe(true);
+    // دستمزد: 5 * 2,500,000 + 2.5 * 2,000,000 = 12,500,000 + 5,000,000 = 17,500,000 ریال
+    expect(opRes.body.data.laborCost).toBe('17500000');
+    // سربار ساخت: 5 * 1,500,000 + 2.5 * 1,000,000 = 7,500,000 + 2,500,000 = 10,000,000 ریال
+    expect(opRes.body.data.overheadCost).toBe('10000000');
+
+    // سند حسابداری جذب: بدهکار در جریان ساخت ۱۵۰۳ / بستانکار ۷۱۰۲ و ۷۱۰۳
+    const jLines = opRes.body.data.journalEntry.lines;
+    const debitWip = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1503');
+    const creditLabor = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-7102');
+    const creditOverhead = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-7103');
+
+    expect(debitWip.debit).toBe('27500000');
+    expect(creditLabor.credit).toBe('17500000');
+    expect(creditOverhead.credit).toBe('10000000');
+  });
+
+  it('Step 46 (Phase 7): Should record abnormal scrap and post abnormal loss journal entry', async () => {
+    // ثبت ۱ عدد تاچ اسکرین شکسته شده غیرعادی حین تست ضربه (۸,۰۰۰,۰۰۰ ریال زیان دوره)
+    const scrapRes = await request(app.getHttpServer())
+      .post(`/api/v1/manufacturing/orders/${createdProductionOrderId}/record-scrap`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        productId: 'comp-touchscreen',
+        scrapType: 'ABNORMAL',
+        quantity: 1,
+        estimatedCost: 8000000,
+        reason: 'شکستگی نمایشگر در اثر خطای اپراتور حین پرس حرارتی',
+        dateShamsi: '1403/11/26'
+      })
+      .expect(201);
+
+    expect(scrapRes.body.success).toBe(true);
+    expect(scrapRes.body.data.scrapType).toBe('ABNORMAL');
+    expect(scrapRes.body.data.cost).toBe('8000000');
+    expect(scrapRes.body.data.journalEntry).toBeDefined();
+
+    // سند حسابداری ضایعات غیرعادی: بدهکار ۸۱۰۸ (هزینه ضایعات) / بستانکار ۱۵۰۳ (در جریان ساخت)
+    const jLines = scrapRes.body.data.journalEntry.lines;
+    const debitScrapExp = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-8108');
+    const creditWip = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1503');
+
+    expect(debitScrapExp.debit).toBe('8000000');
+    expect(creditWip.credit).toBe('8000000');
+  });
+
+  it('Step 47 (Phase 7): Should complete production, receive 10 Smart POS units to warehouse, and post completion voucher', async () => {
+    const compRes = await request(app.getHttpServer())
+      .post(`/api/v1/manufacturing/orders/${createdProductionOrderId}/complete`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        producedQuantity: 10,
+        rejectedQuantity: 0,
+        dateShamsi: '1403/11/27'
+      })
+      .expect(201);
+
+    expect(compRes.body.success).toBe(true);
+    expect(compRes.body.data.producedQuantity).toBe('10');
+    expect(Number(compRes.body.data.unitCost)).toBeGreaterThan(35000000);
+    expect(compRes.body.data.stockReceiptId).toBeDefined();
+
+    // سند حسابداری رسید محصول نهایی: بدهکار ۱۵۰۴ (محصولات نهایی) / بستانکار ۱۵۰۳ (در جریان ساخت)
+    const jLines = compRes.body.data.journalEntry.lines;
+    const debitFinished = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1504');
+    const creditWip = jLines.find((l: any) => (l.subsidiaryAccountId || l.subsidiary_account_id) === 'sub-1503');
+
+    expect(debitFinished).toBeDefined();
+    expect(creditWip).toBeDefined();
+    expect(debitFinished.debit).toBe(compRes.body.data.totalCost);
+    expect(creditWip.credit).toBe(compRes.body.data.totalCost);
+
+    // بررسی کاردکس محصول نهایی در انبار مرکزی: موجودی دقیقا ۱۰ عدد ثبت شده است
+    const kardexRes = await request(app.getHttpServer())
+      .get('/api/v1/inventory/kardex?warehouseId=wh-main&productId=prod-smart-pos')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(kardexRes.body.data.length).toBe(1);
+    expect(kardexRes.body.data[0].document_type).toBe('RECEIPT');
+    expect(kardexRes.body.data[0].in_quantity).toBe('10');
+    expect(kardexRes.body.data[0].balance_quantity).toBe('10');
+  });
+
+  it('Step 48 (Phase 7): Should close order, analyze cost variances, and recognize variance voucher', async () => {
+    const closeRes = await request(app.getHttpServer())
+      .post(`/api/v1/manufacturing/orders/${createdProductionOrderId}/close-variances`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        dateShamsi: '1403/11/27'
+      })
+      .expect(201);
+
+    expect(closeRes.body.success).toBe(true);
+    expect(closeRes.body.data.status).toBe('CLOSED');
+    expect(closeRes.body.data.varianceAnalysis).toBeDefined();
+    expect(closeRes.body.data.varianceAnalysis.netVarianceType).toBeDefined();
+
+    // استعلام نهایی وضعیت سفارش ساخت
+    const getOrderRes = await request(app.getHttpServer())
+      .get(`/api/v1/manufacturing/orders/${createdProductionOrderId}`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(getOrderRes.body.data.status).toBe('CLOSED');
+    expect(getOrderRes.body.data.produced_quantity).toBe('10');
+    expect(getOrderRes.body.data.completion_journal_entry_id).toBeDefined();
   });
 
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {
