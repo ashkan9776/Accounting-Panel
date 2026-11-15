@@ -1585,6 +1585,140 @@ CREATE TABLE IF NOT EXISTS financial_alerts (
 CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_user ON dashboard_widgets(tenant_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_financial_alerts_active ON financial_alerts(tenant_id, company_id, is_resolved);
 
+-- ============================================================================
+-- بخش دهم: فروشگاه آنلاین و چندکاناله، سخت‌افزار، ویزیتور و تردد (Phase 10)
+-- ============================================================================
+
+-- ۵۹. سفارش‌های فروش آنلاین و اینترنتی (Online Orders)
+CREATE TABLE IF NOT EXISTS online_orders (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    order_number TEXT NOT NULL,
+    customer_party_id TEXT NOT NULL,
+    customer_name TEXT NOT NULL,
+    customer_mobile TEXT NOT NULL,
+    shipping_address TEXT NOT NULL,
+    total_goods_amount TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    vat_amount TEXT DEFAULT '0',
+    shipping_fee TEXT DEFAULT '0',
+    grand_total TEXT NOT NULL,
+    status TEXT DEFAULT 'PENDING', -- PENDING, PAID, PREPARING, SHIPPED, DELIVERED, CANCELLED
+    payment_status TEXT DEFAULT 'UNPAID', -- UNPAID, PAID, REFUNDED
+    courier_provider TEXT DEFAULT 'INTERNAL', -- SNAPP_BOX, ALOPEYK, MIARE, INTERNAL
+    courier_tracking_code TEXT,
+    sales_document_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (customer_party_id) REFERENCES parties(id),
+    FOREIGN KEY (sales_document_id) REFERENCES sales_documents(id)
+);
+
+-- ۶۰. اقلام سفارش آنلاین (Online Order Items)
+CREATE TABLE IF NOT EXISTS online_order_items (
+    id TEXT PRIMARY KEY,
+    online_order_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    unit_price TEXT NOT NULL,
+    discount_amount TEXT DEFAULT '0',
+    net_amount TEXT NOT NULL,
+    vat_amount TEXT DEFAULT '0',
+    unit_cogs TEXT DEFAULT '0',
+    total_cogs TEXT DEFAULT '0',
+    FOREIGN KEY (online_order_id) REFERENCES online_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- ۶۱. تراکنش‌های درگاه پرداخت اینترنتی شاپرک IPG (Payment Gateway Transactions)
+CREATE TABLE IF NOT EXISTS online_payment_transactions (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    online_order_id TEXT NOT NULL,
+    gateway_type TEXT NOT NULL, -- BEHPARDAKHT, SADAD, SAMAN, ZARINPAL
+    amount TEXT NOT NULL,
+    status TEXT DEFAULT 'INITIATED', -- INITIATED, VERIFIED, FAILED, REFUNDED
+    token TEXT NOT NULL,
+    rrn TEXT, -- Retrieval Reference Number
+    card_pan_masked TEXT,
+    gateway_fee TEXT DEFAULT '0',
+    verified_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (online_order_id) REFERENCES online_orders(id)
+);
+
+-- ۶۲. سوابق ویزیت و ردیابی بازاریاب میدانی (Visitor Visits & Field Sales GPS)
+CREATE TABLE IF NOT EXISTS visitor_visits (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    visitor_user_id TEXT NOT NULL,
+    customer_party_id TEXT NOT NULL,
+    visit_date_shamsi TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    is_within_geofence INTEGER DEFAULT 1,
+    visit_notes TEXT,
+    sales_document_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (visitor_user_id) REFERENCES users(id),
+    FOREIGN KEY (customer_party_id) REFERENCES parties(id),
+    FOREIGN KEY (sales_document_id) REFERENCES sales_documents(id)
+);
+
+-- ۶۳. تجهیزات سخت‌افزاری فروشگاهی و IoT (Hardware Terminals)
+CREATE TABLE IF NOT EXISTS hardware_terminals (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    device_type TEXT NOT NULL, -- PRINTER_ESC_POS, PC_POS, DIGITAL_SCALE, CASH_DRAWER, ATTENDANCE_TERMINAL
+    title TEXT NOT NULL,
+    ip_address TEXT,
+    port INTEGER,
+    serial_number TEXT,
+    is_active INTEGER DEFAULT 1,
+    config_json TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+-- ۶۴. لاگ‌های خام تردد دستگاه حضور و غیاب (Biometric Attendance Logs)
+CREATE TABLE IF NOT EXISTS attendance_logs (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    terminal_id TEXT NOT NULL,
+    log_date_shamsi TEXT NOT NULL,
+    log_time TEXT NOT NULL,
+    log_type TEXT NOT NULL, -- CLOCK_IN, CLOCK_OUT
+    is_processed INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    FOREIGN KEY (terminal_id) REFERENCES hardware_terminals(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_online_orders_lookup ON online_orders(tenant_id, company_id, order_number);
+CREATE INDEX IF NOT EXISTS idx_online_orders_status ON online_orders(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_visitor_visits_user ON visitor_visits(tenant_id, visitor_user_id, visit_date_shamsi);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_emp ON attendance_logs(tenant_id, employee_id, log_date_shamsi);
+
+
 
 
 

@@ -2195,6 +2195,272 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     expect(updated.position_y).toBe(4);
   });
 
+  // ==========================================
+  // آزمون‌های فاز ۱۰: فروش آنلاین و چندکاناله، رابط سخت‌افزاری، ویزیتور و تردد
+  // ==========================================
+
+  let onlineOrderId: string;
+  let onlinePaymentTxId: string;
+  let onlinePaymentToken: string;
+
+  it('Step 65 (Phase 10): Should create an Online Order with items, shipping fee, and calculate pricing with VAT', async () => {
+    const orderRes = await request(app.getHttpServer())
+      .post('/api/v1/omnichannel/e-commerce/orders')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .send({
+        customerPartyId: 'party-cust-1',
+        customerName: 'فروشگاه پارسیان آنلاین',
+        customerMobile: '09123456789',
+        shippingAddress: 'تهران، خیابان ولیعصر، پلاک ۱۲۳، واحد ۴',
+        items: [
+          {
+            productId: 'prod-smart-pos',
+            quantity: 1,
+            unitPrice: '10000000',
+            discountAmount: '500000'
+          }
+        ],
+        shippingFee: '1000000',
+        couponDiscount: '0'
+      })
+      .expect(201);
+
+    expect(orderRes.body.success).toBe(true);
+    const ord = orderRes.body.data;
+    onlineOrderId = ord.id;
+
+    expect(ord.order_number).toBeDefined();
+    expect(ord.status).toBe('PENDING');
+    expect(ord.payment_status).toBe('UNPAID');
+    // مبلغ کالا: 10,000,000 | تخفیف: 500,000 | خالص: 9,500,000 | مالیات ۱۰٪: 950,000 | حمل: 1,000,000 | جمع کل: 11,450,000
+    expect(ord.total_goods_amount).toBe('10000000');
+    expect(ord.discount_amount).toBe('500000');
+    expect(ord.vat_amount).toBe('950000');
+    expect(ord.shipping_fee).toBe('1000000');
+    expect(ord.grand_total).toBe('11450000');
+    expect(ord.items.length).toBe(1);
+  });
+
+  it('Step 66 (Phase 10): Should initiate IPG payment, verify transaction, issue sales document & post balanced journal voucher', async () => {
+    // ۱. ایجاد توکن پرداخت شاپرک
+    const initRes = await request(app.getHttpServer())
+      .post(`/api/v1/omnichannel/e-commerce/orders/${onlineOrderId}/payment/initiate`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({ gatewayType: 'SAMAN' })
+      .expect(201);
+
+    expect(initRes.body.success).toBe(true);
+    expect(initRes.body.data.token).toBeDefined();
+    expect(initRes.body.data.redirectUrl).toContain('shaparak.ir');
+    onlinePaymentTxId = initRes.body.data.transactionId;
+    onlinePaymentToken = initRes.body.data.token;
+
+    // ۲. وریفای پرداخت و صدور اسناد فروش و حسابداری
+    const verifyRes = await request(app.getHttpServer())
+      .post('/api/v1/omnichannel/e-commerce/payment/verify')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        transactionId: onlinePaymentTxId,
+        token: onlinePaymentToken,
+        rrn: '748291038472',
+        cardPanMasked: '603799******1234',
+        gatewayFee: '40000',
+        costCenterDimensionId: 'dim-cc-1',
+        warehouseDimensionId: 'wh-central'
+      })
+      .expect(201);
+
+    expect(verifyRes.body.success).toBe(true);
+    expect(verifyRes.body.data.rrn).toBe('748291038472');
+    expect(verifyRes.body.data.journalEntry).toBeDefined();
+    expect(verifyRes.body.data.journalEntry.status).toBe('APPROVED');
+    expect(verifyRes.body.data.journalEntry.totalDebit).toBe(verifyRes.body.data.journalEntry.totalCredit);
+
+    // ۳. تسویه وجوه در راه شاپرک به حساب بانکی شرکت
+    const settleRes = await request(app.getHttpServer())
+      .post('/api/v1/omnichannel/e-commerce/payment/settle-to-bank')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .set('x-branch-id', 'branch-central-1')
+      .set('x-fiscal-year-id', 'fy-1403')
+      .send({
+        orderNumber: verifyRes.body.data.orderNumber,
+        settledAmount: '11450000',
+        gatewayFee: '40000',
+        bankDimensionId: 'dim-bank-1',
+        costCenterDimensionId: 'dim-cc-1'
+      })
+      .expect(201);
+
+    expect(settleRes.body.success).toBe(true);
+    expect(settleRes.body.data.journalEntry).toBeDefined();
+    expect(settleRes.body.data.journalEntry.status).toBe('APPROVED');
+    expect(settleRes.body.data.journalEntry.totalDebit).toBe('11450000');
+  });
+
+  it('Step 67 (Phase 10): Should assign courier (SnappBox/Alopeyk) and sync catalog with external e-commerce (WooCommerce)', async () => {
+    // تخصیص پیک اسنپ‌باکس
+    const courierRes = await request(app.getHttpServer())
+      .post(`/api/v1/omnichannel/e-commerce/orders/${onlineOrderId}/assign-courier`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        courierProvider: 'SNAPP_BOX',
+        trackingCode: 'SNP-784910'
+      })
+      .expect(201);
+
+    expect(courierRes.body.success).toBe(true);
+    expect(courierRes.body.data.status).toBe('SHIPPED');
+    expect(courierRes.body.data.trackingCode).toBe('SNP-784910');
+
+    // همگام‌سازی موجودی و قیمت با ووکامرس
+    const syncRes = await request(app.getHttpServer())
+      .get('/api/v1/omnichannel/e-commerce/sync-catalog?platform=WOOCOMMERCE')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(syncRes.body.success).toBe(true);
+    expect(syncRes.body.data.platform).toBe('WOOCOMMERCE');
+    expect(syncRes.body.data.items).toBeDefined();
+    expect(syncRes.body.data.items.length).toBeGreaterThan(0);
+  });
+
+  it('Step 68 (Phase 10): Should generate ESC/POS thermal receipt binary commands with barcode and cash drawer pulse', async () => {
+    const escRes = await request(app.getHttpServer())
+      .get(`/api/v1/omnichannel/hardware/receipt-escpos/${onlineOrderId}`)
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(escRes.body.success).toBe(true);
+    expect(escRes.body.data.bufferLengthBytes).toBeGreaterThan(50);
+    expect(escRes.body.data.hexCommands).toBeDefined();
+    // شروع بافر با ESC @ (1b40)
+    expect(escRes.body.data.hexCommands.startsWith('1b40')).toBe(true);
+    expect(escRes.body.data.base64Commands).toBeDefined();
+  });
+
+  it('Step 69 (Phase 10): Should list hardware terminals, send PC-POS payment request, and read digital scale weight', async () => {
+    // لیست تجهیزات سخت‌افزاری
+    const termRes = await request(app.getHttpServer())
+      .get('/api/v1/omnichannel/hardware/terminals')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(termRes.body.success).toBe(true);
+    expect(termRes.body.data.length).toBeGreaterThanOrEqual(4);
+    const pcposTerm = termRes.body.data.find((t: any) => t.device_type === 'PC_POS');
+    expect(pcposTerm).toBeDefined();
+
+    // ارسال تراکنش به کارتخوان PC-POS
+    const pcposRes = await request(app.getHttpServer())
+      .post('/api/v1/omnichannel/hardware/pcpos/sale')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        terminalId: pcposTerm.id,
+        amount: '15000000',
+        orderId: 'ORD-1403-9901'
+      })
+      .expect(201);
+
+    expect(pcposRes.body.success).toBe(true);
+    expect(pcposRes.body.data.response.isSuccess).toBe(true);
+    expect(pcposRes.body.data.response.rrn).toBeDefined();
+    expect(pcposRes.body.data.response.cardPanMasked).toBeDefined();
+
+    // خواندن وزن لحظه‌ای ترازوی دیجیتال
+    const scaleRes = await request(app.getHttpServer())
+      .post('/api/v1/omnichannel/hardware/scale/read')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .send({
+        terminalId: 'term-scale-1',
+        rawStream: 'ST,GS,+003.500KG'
+      })
+      .expect(201);
+
+    expect(scaleRes.body.success).toBe(true);
+    expect(scaleRes.body.data.isStable).toBe(true);
+    expect(scaleRes.body.data.netWeightGrams).toBe(3500);
+  });
+
+  it('Step 70 (Phase 10): Should check customer credit limit, record visitor visit with GPS geofencing, and process attendance logs', async () => {
+    // ۱. استعلام سقف اعتبار مشتری برای اپلیکیشن ویزیتور (تایید مشتری با اعتبار آزاد)
+    const creditRes = await request(app.getHttpServer())
+      .get('/api/v1/omnichannel/visitor/customer-credit?partyId=party-cust-2&amount=5000000')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(creditRes.body.success).toBe(true);
+    expect(creditRes.body.data.partyId).toBe('party-cust-2');
+    expect(creditRes.body.data.isCreditApproved).toBe(true);
+
+    // بررسی رد اعتبار برای مشتری با بدهی بیش از سقف مجاز
+    const rejectedCreditRes = await request(app.getHttpServer())
+      .get('/api/v1/omnichannel/visitor/customer-credit?partyId=party-cust-1&amount=5000000')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(rejectedCreditRes.body.data.isCreditApproved).toBe(false);
+    expect(rejectedCreditRes.body.data.rejectionReason).toContain('سقف اعتبار');
+
+    // ۲. ثبت ویزیت بازاریاب با ژئوفنسینگ GPS
+    const visitRes = await request(app.getHttpServer())
+      .post('/api/v1/omnichannel/visitor/visits')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        customerPartyId: 'party-cust-1',
+        visitDateShamsi: '1403/12/29',
+        latitude: 35.7575,
+        longitude: 51.4100,
+        visitNotes: 'ملاقات با مدیر فروشگاه پارسیان و معرفی کاتالوگ پایانه‌های فروشگاهی جدید'
+      })
+      .expect(201);
+
+    expect(visitRes.body.success).toBe(true);
+    expect(visitRes.body.data.visitId).toBeDefined();
+    expect(visitRes.body.data.geofence.isWithinGeofence).toBe(true);
+
+    // ۳. استعلام خلاصه کارکرد و حضور و غیاب پرسنل از دستگاه ورود و خروج
+    const attRes = await request(app.getHttpServer())
+      .get('/api/v1/omnichannel/hardware/attendance/summary/emp-rezaei-1?dateShamsi=1403/12/29')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .expect(200);
+
+    expect(attRes.body.success).toBe(true);
+    expect(attRes.body.data.employeeId).toBe('emp-rezaei-1');
+    expect(attRes.body.data.totalPresentMinutes).toBe(570); // ۹.۵ ساعت کارکرد
+    expect(attRes.body.data.overtimeMinutes).toBe(90); // ۱.۵ ساعت اضافه‌کاری
+    expect(attRes.body.data.firstClockIn).toBe('08:00:00');
+    expect(attRes.body.data.lastClockOut).toBe('17:30:00');
+  });
+
   it('Step 12: Final integrity check: Trial Balance must remain 100% balanced across all operations', async () => {
     const tbRes = await request(app.getHttpServer())
       .get('/api/v1/accounting/reports/trial-balance')

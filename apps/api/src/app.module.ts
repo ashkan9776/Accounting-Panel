@@ -19,6 +19,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 import { FixedAssetsModule } from './modules/fixed-assets/fixed-assets.module';
 import { TaxReportsModule } from './modules/tax-reports/tax-reports.module';
 import { FinancialReportsModule } from './modules/financial-reports/financial-reports.module';
+import { OmnichannelModule } from './modules/omnichannel/omnichannel.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { FinancialReportsModule } from './modules/financial-reports/financial-re
     FixedAssetsModule,
     TaxReportsModule,
     FinancialReportsModule,
+    OmnichannelModule,
     RulesModule,
     AuditModule
   ],

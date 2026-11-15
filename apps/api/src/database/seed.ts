@@ -1374,6 +1374,91 @@ export async function runSeed() {
 
   console.log('[Seed Phase 9] Dashboard widgets and alert rules seeded successfully.');
 
+  // ==========================================
+  // فاز ۱۰: فروش آنلاین، سخت‌افزار، ویزیتور و تردد (Phase 10)
+  // ==========================================
+  console.log('[Seed Phase 10] Seeding Hardware Terminals, Online Orders and Attendance Baseline...');
+
+  // ۱. تجهیزات سخت‌افزاری فروشگاهی و اداری
+  const hardwareTerminals = [
+    {
+      id: 'term-printer-1',
+      deviceType: 'PRINTER_ESC_POS',
+      title: 'چاپگر حرارتی بیکسلون صندوق ۱',
+      ip: '192.168.1.150',
+      port: 9100,
+      serial: 'BIX-SRP-350-001',
+      config: JSON.stringify({ paperWidth: 80, feedLines: 3, autoCut: true })
+    },
+    {
+      id: 'term-pcpos-1',
+      deviceType: 'PC_POS',
+      title: 'پایانه کارتخوان به‌پرداخت ملت صندوق ۱',
+      ip: '192.168.1.151',
+      port: 8888,
+      serial: 'BMP-ING-9220-001',
+      config: JSON.stringify({ terminalId: '68541234', merchantId: '1002547', protocol: 'BEHPARDAKHT_LAN' })
+    },
+    {
+      id: 'term-scale-1',
+      deviceType: 'DIGITAL_SCALE',
+      title: 'ترازوی دیجیتال فروشگاهی محک ۱',
+      ip: '192.168.1.152',
+      port: 4001,
+      serial: 'MAHAK-15000-001',
+      config: JSON.stringify({ baudRate: 9600, protocol: 'TOLEDO_CONTINUOUS' })
+    },
+    {
+      id: 'term-attendance-1',
+      deviceType: 'ATTENDANCE_TERMINAL',
+      title: 'دستگاه حضور و غیاب علم و صنعت ورودی پرسنل',
+      ip: '192.168.1.160',
+      port: 4370,
+      serial: 'ZK-UFACE-800-001',
+      config: JSON.stringify({ syncIntervalMinutes: 15, protocol: 'ZK_TECO_TCP' })
+    }
+  ];
+
+  for (const t of hardwareTerminals) {
+    await run(
+      `INSERT OR REPLACE INTO hardware_terminals (
+        id, tenant_id, company_id, branch_id, device_type, title, ip_address, port, serial_number, is_active, config_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [t.id, tenantId, companyId, branchId, t.deviceType, t.title, t.ip, t.port, t.serial, t.config, now]
+    );
+  }
+
+  // ۲. لاگ‌های پایه تردد پرسنل برای روز ۲۹ اسفند
+  const attendanceLogs = [
+    {
+      id: 'log-att-1',
+      empId: 'emp-rezaei-1',
+      termId: 'term-attendance-1',
+      dateShamsi: '1403/12/29',
+      time: '08:00:00',
+      type: 'CLOCK_IN'
+    },
+    {
+      id: 'log-att-2',
+      empId: 'emp-rezaei-1',
+      termId: 'term-attendance-1',
+      dateShamsi: '1403/12/29',
+      time: '17:30:00', // ۹.۵ ساعت حضور (۵۷۰ دقیقه = ۴۸۰ دقیقه موظف + ۹۰ دقیقه اضافه‌کاری)
+      type: 'CLOCK_OUT'
+    }
+  ];
+
+  for (const al of attendanceLogs) {
+    await run(
+      `INSERT OR REPLACE INTO attendance_logs (
+        id, tenant_id, company_id, employee_id, terminal_id, log_date_shamsi, log_time, log_type, is_processed, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      [al.id, tenantId, companyId, al.empId, al.termId, al.dateShamsi, al.time, al.type, now]
+    );
+  }
+
+  console.log('[Seed Phase 10] Phase 10 hardware terminals and attendance logs seeded successfully.');
+
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
   db.close();
 }

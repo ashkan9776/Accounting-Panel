@@ -726,6 +726,19 @@ export const STANDARD_IRANIAN_SUBSIDIARIES: AccountSubsidiary[] = [
     isActive: true
   },
   {
+    id: 'sub-8105',
+    headId: 'head-81',
+    code: '8105',
+    title: 'هزینه‌های مالی و کارمزد خدمات بانکی',
+    nature: AccountNature.DEBIT,
+    requiresFloatingDimension1: false,
+    requiresFloatingDimension2: true,
+    allowedDimension2Type: FloatingDimensionType.COST_CENTER,
+    requiresFloatingDimension3: false,
+    isCurrencyDependent: false,
+    isActive: true
+  },
+  {
     id: 'sub-8108',
     headId: 'head-81',
     code: '8108',
