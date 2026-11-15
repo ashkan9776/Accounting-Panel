@@ -5,7 +5,12 @@
   "description": "پلتفرم جامع SaaS حسابداری، مالی و مدیریت کسب‌وکار ایرانی",
   "scripts": {
     "build": "pnpm -r run build",
+    "start": "pnpm --filter @accounting/api start:prod",
+    "start:dev": "pnpm --filter @accounting/api start:dev",
+    "seed": "pnpm --filter @accounting/api seed",
     "test": "pnpm -r run test",
+    "test:core": "pnpm --filter @accounting/core test",
+    "test:api": "pnpm --filter @accounting/api test",
     "lint": "pnpm -r run lint"
   },
   "devDependencies": {
