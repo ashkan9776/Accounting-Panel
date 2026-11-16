@@ -93,8 +93,12 @@ const MENU_ITEMS = [
   },
   {
     title: 'رستوران و صنایع غذایی',
-    href: '/restaurant/tables',
     icon: Utensils,
+    items: [
+      { title: 'نقشه سالن و میزها', href: '/restaurant/tables' },
+      { title: 'نمایشگر آشپزخانه (KDS)', href: '/restaurant/kds' },
+      { title: 'دستور پخت و Food Cost', href: '/restaurant/recipes' },
+    ],
   },
   {
     title: 'راه‌اندازی صنف (Onboarding)',

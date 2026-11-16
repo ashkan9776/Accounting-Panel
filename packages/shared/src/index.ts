@@ -6,3 +6,4 @@ export * from './treasury';
 export * from './inventory';
 export * from './moadian';
 export * from './pos';
+export * from './restaurant';

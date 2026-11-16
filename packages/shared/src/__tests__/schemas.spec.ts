@@ -19,6 +19,10 @@ import {
   PosShiftOpenSchema,
   PosShiftCloseSchema,
   PosCashMovementSchema,
+  RestaurantTableCreateSchema,
+  RestaurantTableTransferSchema,
+  RestaurantRecipeCreateSchema,
+  RestaurantOrderCreateSchema,
 } from '../index';
 
 describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
@@ -428,6 +432,99 @@ describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
         totalPayable: 0,
       };
       expect(PosOrderCreateSchema.safeParse(emptyOrder).success).toBe(false);
+    });
+  });
+
+  describe('Restaurant & Food Service Schemas', () => {
+    it('should validate creating restaurant table with section and capacity', () => {
+      const table = {
+        tableNumber: 'T-VIP-1',
+        section: 'سالن VIP',
+        capacity: 8,
+        status: 'VACANT',
+      };
+      const result = RestaurantTableCreateSchema.safeParse(table);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate restaurant table transfer from one table to another', () => {
+      const transfer = {
+        fromTableId: 'tbl-101',
+        toTableId: 'tbl-102',
+      };
+      const result = RestaurantTableTransferSchema.safeParse(transfer);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate recipe formulation (BOM) with raw materials and waste percentage', () => {
+      const recipe = {
+        menuProductId: 'prod-chelo-kabab',
+        menuProductName: 'چلوکباب کوبیده زعفرانی مخصوص',
+        yieldQuantity: 1,
+        sellingPrice: 3500000,
+        preparationTimeMinutes: 20,
+        kitchenStation: 'HOT_KITCHEN',
+        ingredients: [
+          {
+            rawProductId: 'raw-beef-1',
+            rawProductName: 'گوشت راسته گوساله',
+            quantity: 150, // ۱۵۰ گرم
+            unit: 'گرم',
+            unitCost: 7500, // ۷,۵۰۰ ریال هر گرم
+            wastePercentage: 5, // ۵٪ ضایعات پاک‌کردن
+          },
+          {
+            rawProductId: 'raw-rice-1',
+            rawProductName: 'برنج درجه یک ایرانی',
+            quantity: 250, // ۲۵۰ گرم
+            unit: 'گرم',
+            unitCost: 1500,
+            wastePercentage: 2,
+          },
+        ],
+      };
+      const result = RestaurantRecipeCreateSchema.safeParse(recipe);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate restaurant order creation with kitchen station, tip, and service fee', () => {
+      const order = {
+        channel: 'DINE_IN',
+        tableId: 'tbl-101',
+        tableNumber: 'T-101',
+        customerName: 'مهمان سالن اصلی',
+        items: [
+          {
+            productId: 'prod-chelo-kabab',
+            productName: 'چلوکباب کوبیده زعفرانی مخصوص',
+            quantity: 2,
+            unitPrice: 3500000,
+            vatAmount: 700000,
+            totalPrice: 7700000,
+            notes: 'بدون گوجه، کره محلی اضافه',
+            kitchenStation: 'HOT_KITCHEN',
+          },
+        ],
+        totalGross: 7000000,
+        serviceFeeRate: 5,
+        serviceFeeAmount: 350000,
+        tipAmount: 100000,
+        totalVat: 700000,
+        totalPayable: 8150000,
+      };
+      const result = RestaurantOrderCreateSchema.safeParse(order);
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject restaurant order with empty items list', () => {
+      const invalidOrder = {
+        channel: 'DINE_IN',
+        tableId: 'tbl-101',
+        items: [],
+        totalGross: 0,
+        totalPayable: 0,
+      };
+      expect(RestaurantOrderCreateSchema.safeParse(invalidOrder).success).toBe(false);
     });
   });
 });
