@@ -154,6 +154,15 @@ const MENU_ITEMS = [
     ],
   },
   {
+    title: 'تنظیمات ابری و امنیت',
+    icon: Settings,
+    items: [
+      { title: 'طرح‌ها و اشتراک SaaS', href: '/settings/subscription' },
+      { title: 'امنیت و ورود دومرحله‌ای (2FA)', href: '/settings/security' },
+      { title: 'انتقال داده‌ها (Migration)', href: '/settings/migration' },
+    ],
+  },
+  {
     title: 'راه‌اندازی صنف (Onboarding)',
     href: '/onboarding',
     icon: Sparkles,
