@@ -10,3 +10,4 @@ export * from './restaurant';
 export * from './manufacturing';
 export * from './payroll';
 export * from './fixed-assets';
+export * from './financial-statements';

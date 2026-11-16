@@ -23,6 +23,8 @@ import {
   Factory,
   Briefcase,
   Landmark,
+  BarChart3,
+  TrendingUp,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -77,12 +79,24 @@ const MENU_ITEMS = [
     ],
   },
   {
-    title: 'حسابداری دوبل',
+    title: 'حسابداری دوبل و دفاتر',
     icon: FileSpreadsheet,
     items: [
       { title: 'ثبت سند دوبل', href: '/accounting/vouchers' },
       { title: 'درخت کدینگ حساب‌ها', href: '/accounting/chart' },
       { title: 'تراز آزمایشی', href: '/accounting/reports/trial-balance' },
+      { title: 'بستن حساب‌های پایان سال', href: '/accounting/closing' },
+    ],
+  },
+  {
+    title: 'صورت‌های مالی و BI',
+    icon: BarChart3,
+    items: [
+      { title: 'ترازنامه (استاندارد ۱)', href: '/accounting/reports/balance-sheet' },
+      { title: 'صورت سود و زیان جامع', href: '/accounting/reports/income-statement' },
+      { title: 'جریان وجوه نقد (استاندارد ۲)', href: '/accounting/reports/cash-flow' },
+      { title: 'نسبت‌های مالی و سلامت', href: '/accounting/reports/ratios' },
+      { title: 'سن‌سنجی مطالبات مشتریان', href: '/analytics/receivables' },
     ],
   },
   {

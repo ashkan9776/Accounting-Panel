@@ -155,4 +155,12 @@ export {
   DepreciationCalculateInput,
   AssetDisposalSchema,
   AssetDisposalInput,
+  FinancialReportQuerySchema,
+  FinancialReportQueryInput,
+  FiscalYearCloseTemporarySchema,
+  FiscalYearCloseTemporaryInput,
+  FiscalYearClosePermanentSchema,
+  FiscalYearClosePermanentInput,
+  FiscalYearOpenNextSchema,
+  FiscalYearOpenNextInput,
 } from '@accounting/shared';

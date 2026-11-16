@@ -35,6 +35,10 @@ import {
   FixedAssetCreateSchema,
   DepreciationCalculateSchema,
   AssetDisposalSchema,
+  FinancialReportQuerySchema,
+  FiscalYearCloseTemporarySchema,
+  FiscalYearClosePermanentSchema,
+  FiscalYearOpenNextSchema,
 } from '../index';
 
 describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
@@ -742,6 +746,50 @@ describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
       };
       const dResult = AssetDisposalSchema.safeParse(disposal);
       expect(dResult.success).toBe(true);
+    });
+  });
+
+  describe('Financial Statements & Year-End Closing Schemas', () => {
+    it('should validate financial report query filters with Shamsi dates', () => {
+      const query = {
+        asOfDateShamsi: '1403/12/29',
+        fromDateShamsi: '1403/01/01',
+        toDateShamsi: '1403/12/29',
+        comparative: true,
+      };
+      const result = FinancialReportQuerySchema.safeParse(query);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate year-end temporary accounts closing payload', () => {
+      const closeTemp = {
+        fiscalYearId: 'fy-1403',
+        closingDateShamsi: '1403/12/29',
+        retainedEarningsAccountId: 'sub-5201',
+        description: 'بستن حساب‌های موقت درآمد و هزینه سال مالی ۱۴۰۳',
+      };
+      const result = FiscalYearCloseTemporarySchema.safeParse(closeTemp);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate year-end permanent closing voucher and new fiscal year opening', () => {
+      const closePerm = {
+        fiscalYearId: 'fy-1403',
+        closingDateShamsi: '1403/12/29',
+        description: 'سند اختتامیه و بستن حساب‌های ترازنامه‌ای سال مالی ۱۴۰۳',
+      };
+      const cResult = FiscalYearClosePermanentSchema.safeParse(closePerm);
+      expect(cResult.success).toBe(true);
+
+      const openNext = {
+        previousFiscalYearId: 'fy-1403',
+        newFiscalYearTitle: 'سال مالی ۱۴۰۴',
+        openingDateShamsi: '1404/01/01',
+        endDateShamsi: '1404/12/29',
+        description: 'سند افتتاحیه سال مالی ۱۴۰۴ منتقله از تراز اختتامیه سال ۱۴۰۳',
+      };
+      const oResult = FiscalYearOpenNextSchema.safeParse(openNext);
+      expect(oResult.success).toBe(true);
     });
   });
 });
