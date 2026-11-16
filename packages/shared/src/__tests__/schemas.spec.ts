@@ -8,6 +8,10 @@ import {
   ChequeStatusChangeSchema,
   MoneyTransferSchema,
   BankAccountCreateSchema,
+  WarehouseCreateSchema,
+  ProductCreateSchema,
+  InventoryCountCreateSchema,
+  PurchaseInvoiceCreateSchema,
 } from '../index';
 
 describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
@@ -184,6 +188,78 @@ describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
         initialBalance: 500000000,
       };
       const result = BankAccountCreateSchema.safeParse(bank);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Inventory & Purchase Schemas', () => {
+    it('should validate warehouse creation', () => {
+      const wh = {
+        code: 'WH-01',
+        name: 'انبار مرکزی مواد و کالا',
+        phone: '02188880000',
+        keeperName: 'رضا انباردار',
+      };
+      const result = WarehouseCreateSchema.safeParse(wh);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate product creation with 10% VAT and stock alert limits', () => {
+      const prod = {
+        code: 'PRD-OIL-5L',
+        name: 'روغن سرخ‌کردنی ۵ لیتری بهار',
+        unitId: 'unit-piece-1',
+        type: 'GOODS',
+        sellPrice: 19500000,
+        purchasePrice: 16000000,
+        taxExempt: false,
+        vatRate: 10,
+        minStockAlert: 10,
+        maxStockAlert: 500,
+      };
+      const result = ProductCreateSchema.safeParse(prod);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate inventory count with discrepancy rows', () => {
+      const count = {
+        warehouseId: 'wh-main-1',
+        countDateShamsi: '1403/08/26',
+        description: 'انبارگردانی پایان دوره آبان‌ماه',
+        items: [
+          {
+            productId: 'prod-1',
+            systemQuantity: 50,
+            countedQuantity: 48, // ۲ عدد کسری
+            unitCost: 15000000,
+            description: 'کسری ناشی از تبخیر یا ضایعات',
+          },
+        ],
+      };
+      const result = InventoryCountCreateSchema.safeParse(count);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate purchase invoice creation with freight amount', () => {
+      const purchase = {
+        documentNumber: 'PUR-1403-0001',
+        dateShamsi: '1403/08/26',
+        supplierPartyId: 'party-supplier-1',
+        warehouseId: 'wh-main-1',
+        freightAmount: 5000000, // ۵ میلیون ریال هزینه حمل
+        discountAmount: 2000000,
+        description: 'خرید عمده مواد اولیه دوره جاری',
+        items: [
+          {
+            productId: 'prod-oil-1',
+            quantity: 100,
+            unitCost: 15000000,
+            taxExempt: false,
+            vatRate: 10,
+          },
+        ],
+      };
+      const result = PurchaseInvoiceCreateSchema.safeParse(purchase);
       expect(result.success).toBe(true);
     });
   });

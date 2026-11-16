@@ -33,4 +33,12 @@ export {
   BankAccountCreateInput,
   CashDeskCreateSchema,
   CashDeskCreateInput,
+  WarehouseCreateSchema,
+  WarehouseCreateInput,
+  ProductCreateSchema,
+  ProductCreateInput,
+  InventoryCountCreateSchema,
+  InventoryCountCreateInput,
+  PurchaseInvoiceCreateSchema,
+  PurchaseInvoiceCreateInput,
 } from '@accounting/shared';

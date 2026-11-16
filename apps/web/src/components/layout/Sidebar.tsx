@@ -18,6 +18,7 @@ import {
   Settings,
   Sparkles,
   Wallet,
+  ShoppingCart,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -37,12 +38,11 @@ const MENU_ITEMS = [
     ],
   },
   {
-    title: 'حسابداری دوبل',
-    icon: FileSpreadsheet,
+    title: 'خرید و تدارکات',
+    icon: ShoppingCart,
     items: [
-      { title: 'ثبت سند دوبل', href: '/accounting/vouchers' },
-      { title: 'درخت کدینگ حساب‌ها', href: '/accounting/chart' },
-      { title: 'تراز آزمایشی', href: '/accounting/reports/trial-balance' },
+      { title: 'صدور فاکتور خرید', href: '/purchases/invoices/new' },
+      { title: 'فهرست فاکتورهای خرید', href: '/purchases/invoices' },
     ],
   },
   {
@@ -50,15 +50,27 @@ const MENU_ITEMS = [
     icon: Receipt,
     items: [
       { title: 'صدور فاکتور فروش', href: '/sales/invoices/new' },
-      { title: 'طرف‌حساب‌ها', href: '/sales/customers' },
+      { title: 'فهرست فاکتورهای فروش', href: '/sales/invoices' },
+      { title: 'طرف‌حساب‌ها و مشتریان', href: '/sales/customers' },
     ],
   },
   {
-    title: 'انبار و کالا',
+    title: 'انبار و موجودی کالا',
     icon: Package,
     items: [
       { title: 'فهرست کالا و خدمات', href: '/inventory/products' },
-      { title: 'کاردکس انبار', href: '/inventory/kardex' },
+      { title: 'کاردکس و گردش کالا', href: '/inventory/kardex' },
+      { title: 'انبارها و موجودی', href: '/inventory/warehouses' },
+      { title: 'انبارگردانی و مغایرت', href: '/inventory/counts' },
+    ],
+  },
+  {
+    title: 'حسابداری دوبل',
+    icon: FileSpreadsheet,
+    items: [
+      { title: 'ثبت سند دوبل', href: '/accounting/vouchers' },
+      { title: 'درخت کدینگ حساب‌ها', href: '/accounting/chart' },
+      { title: 'تراز آزمایشی', href: '/accounting/reports/trial-balance' },
     ],
   },
   {
