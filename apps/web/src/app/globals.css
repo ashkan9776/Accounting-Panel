@@ -32,6 +32,21 @@ body {
   background: #94a3b8;
 }
 
+/* اسکرول‌بار اختصاصی و روان سایدبار منوها */
+aside nav::-webkit-scrollbar {
+  width: 5px;
+}
+aside nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+aside nav::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+aside nav::-webkit-scrollbar-thumb:hover {
+  background: #10b981;
+}
+
 /* جدول‌های فشرده مالی */
 .accounting-table th {
   background-color: #f1f5f9;

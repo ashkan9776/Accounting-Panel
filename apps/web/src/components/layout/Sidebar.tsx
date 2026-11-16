@@ -25,6 +25,7 @@ import {
   Landmark,
   BarChart3,
   TrendingUp,
+  Globe,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -144,6 +145,15 @@ const MENU_ITEMS = [
     ],
   },
   {
+    title: 'فروش آنلاین و سخت‌افزار',
+    icon: Globe,
+    items: [
+      { title: 'سفارشات اینترنتی و پیک', href: '/omnichannel/orders' },
+      { title: 'کارتخوان و سخت‌افزار (IoT)', href: '/omnichannel/hardware' },
+      { title: 'ویزیتوری و ردیابی GPS', href: '/omnichannel/visitors' },
+    ],
+  },
+  {
     title: 'راه‌اندازی صنف (Onboarding)',
     href: '/onboarding',
     icon: Sparkles,
@@ -154,7 +164,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-200 min-h-screen flex flex-col shadow-xl select-none no-print print:hidden">
+    <aside className="w-64 bg-slate-900 text-slate-200 h-screen max-h-screen shrink-0 flex flex-col shadow-xl select-none no-print print:hidden">
       {/* برند و لوگو */}
       <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-800">
         <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shadow-md shadow-emerald-900/50">

@@ -21,6 +21,15 @@ export class ECommerceService {
     private readonly journalService: JournalEntriesService
   ) {}
 
+  // ۰. دریافت فهرست سفارشات آنلاین
+  async listOnlineOrders(tenantId: string, companyId: string) {
+    const orders = await this.db.query(
+      `SELECT * FROM online_orders WHERE tenant_id = ? AND company_id = ? ORDER BY rowid DESC`,
+      [tenantId, companyId]
+    );
+    return orders;
+  }
+
   // ۱. ثبت سفارش جدید در فروشگاه اینترنتی
   async createOnlineOrder(
     tenantId: string,

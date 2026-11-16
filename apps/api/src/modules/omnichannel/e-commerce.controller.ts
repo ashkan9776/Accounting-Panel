@@ -8,6 +8,13 @@ import { ECommerceService } from './e-commerce.service';
 export class ECommerceController {
   constructor(private readonly eCommService: ECommerceService) {}
 
+  @Get('orders')
+  async listOnlineOrders(@Req() req: Request) {
+    const ctx = req.tenantContext!;
+    const result = await this.eCommService.listOnlineOrders(ctx.tenantId, ctx.companyId);
+    return { success: true, data: result };
+  }
+
   @Post('orders')
   async createOnlineOrder(@Req() req: Request, @Body() body: any) {
     const ctx = req.tenantContext!;
