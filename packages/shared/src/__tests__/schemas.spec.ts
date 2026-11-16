@@ -12,6 +12,9 @@ import {
   ProductCreateSchema,
   InventoryCountCreateSchema,
   PurchaseInvoiceCreateSchema,
+  MoadianTaxIdSchema,
+  MoadianConfigSchema,
+  MoadianInvoicePayloadSchema,
 } from '../index';
 
 describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
@@ -260,6 +263,76 @@ describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
         ],
       };
       const result = PurchaseInvoiceCreateSchema.safeParse(purchase);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Moadian & Tax Terminal Schemas', () => {
+    it('should validate 22-character uppercase alphanumeric Tax ID', () => {
+      const validTaxId = 'A123450000000000000128';
+      const result = MoadianTaxIdSchema.safeParse(validTaxId);
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid Tax ID with wrong length or lowercase', () => {
+      expect(MoadianTaxIdSchema.safeParse('A12345').success).toBe(false);
+      expect(MoadianTaxIdSchema.safeParse('a123450000000000000128').success).toBe(false);
+    });
+
+    it('should validate Moadian configuration with 6-char memory ID and RSA keys', () => {
+      const config = {
+        fiscalMemoryId: 'A12345',
+        privateKey: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAz...==\n-----END RSA PRIVATE KEY-----',
+        publicKey: '-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+gAwIBAgIU...==\n-----END CERTIFICATE-----',
+        transportMethod: 'DIRECT',
+        fiscalYear: '1403',
+        isSandbox: false,
+      };
+      const result = MoadianConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate full Moadian invoice payload with header and items', () => {
+      const payload = {
+        header: {
+          taxId: 'A123450000000000000128',
+          issueDateShamsi: '1403/08/26',
+          issueDateTimeStamp: 1732608000000,
+          invoiceType: 'TYPE_1',
+          invoicePattern: 'PATTERN_1_GENERAL',
+          invoiceSubject: 'MAIN',
+          sellerFiscalMemoryId: 'A12345',
+          sellerNationalId: '14001234567',
+          sellerPostalCode: '1987654321',
+          customerType: 'LEGAL',
+          customerNationalId: '14009876543',
+          customerPostalCode: '1456789012',
+          totalGrossAmount: '100000000',
+          totalDiscountAmount: '0',
+          totalNetAmount: '100000000',
+          totalVatAmount: '10000000',
+          totalGrandAmount: '110000000',
+          settlementMethod: 'CASH',
+        },
+        items: [
+          {
+            rowNumber: 1,
+            sstid: '2710000012345', // 13 digits fiscal item code
+            description: 'خدمات پشتیبانی و لایسنس نرم‌افزار',
+            quantity: '1',
+            unitCode: '1640',
+            unitPrice: '100000000',
+            totalPrice: '100000000',
+            discountAmount: '0',
+            netPrice: '100000000',
+            vatRate: '0.10',
+            vatAmount: '10000000',
+            otherTaxesAmount: '0',
+            finalAmount: '110000000',
+          },
+        ],
+      };
+      const result = MoadianInvoicePayloadSchema.safeParse(payload);
       expect(result.success).toBe(true);
     });
   });

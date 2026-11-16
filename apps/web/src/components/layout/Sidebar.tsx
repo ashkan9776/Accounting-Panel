@@ -19,6 +19,7 @@ import {
   Sparkles,
   Wallet,
   ShoppingCart,
+  ShieldCheck,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -52,6 +53,14 @@ const MENU_ITEMS = [
       { title: 'صدور فاکتور فروش', href: '/sales/invoices/new' },
       { title: 'فهرست فاکتورهای فروش', href: '/sales/invoices' },
       { title: 'طرف‌حساب‌ها و مشتریان', href: '/sales/customers' },
+    ],
+  },
+  {
+    title: 'سامانه مودیان',
+    icon: ShieldCheck,
+    items: [
+      { title: 'کارتابل صورتحساب‌ها', href: '/moadian/invoices' },
+      { title: 'تنظیمات و کلیدهای مودیان', href: '/moadian/config' },
     ],
   },
   {
