@@ -21,6 +21,31 @@ import {
 } from 'lucide-react';
 import { fetchApi } from '../../../lib/api';
 
+function formatToShamsi(dateStr?: string | null): string {
+  if (!dateStr) return '—';
+  if (/^1[34]\d\d\/\d{1,2}\/\d{1,2}/.test(dateStr)) {
+    return dateStr;
+  }
+  try {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
+    }
+  } catch {}
+  return dateStr;
+}
+
+function formatFaNumber(val?: number | string | null): string {
+  if (val === undefined || val === null || val === '') return '۰';
+  const num = typeof val === 'number' ? val : Number(val);
+  if (isNaN(num)) return String(val);
+  return num.toLocaleString('fa-IR');
+}
+
 const DEFAULT_PLANS = [
   {
     id: 'plan-starter',
@@ -293,11 +318,11 @@ export default function SaaSPlansAndSubscriptionPage() {
             <div className="border-t border-slate-800/80 pt-4 space-y-2 text-xs text-slate-300">
               <div className="flex justify-between">
                 <span>اعتبار تا تاریخ:</span>
-                <span className="font-mono text-white font-bold">{subscription.expiresAt}</span>
+                <span className="font-mono text-white font-bold">{formatToShamsi(subscription.expiresAt)}</span>
               </div>
               <div className="flex justify-between">
                 <span>روزهای باقیمانده:</span>
-                <span className="font-mono text-emerald-400 font-bold">{subscription.daysRemaining} روز</span>
+                <span className="font-mono text-emerald-400 font-bold">{formatFaNumber(subscription.daysRemaining)} روز</span>
               </div>
               <div className="flex justify-between">
                 <span>تمدید خودکار:</span>
@@ -341,8 +366,8 @@ export default function SaaSPlansAndSubscriptionPage() {
                 ></div>
               </div>
               <div className="text-[11px] text-slate-500 flex justify-between font-mono">
-                <span>{usage.currentTransactions.toLocaleString('fa-IR')}</span>
-                <span>سقف: {usage.maxTransactions.toLocaleString('fa-IR')}</span>
+                <span>{formatFaNumber(usage.currentTransactions)} تراکنش</span>
+                <span>سقف: {formatFaNumber(usage.maxTransactions)}</span>
               </div>
             </div>
 
@@ -350,7 +375,7 @@ export default function SaaSPlansAndSubscriptionPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                 <span>کاربران همزمان:</span>
-                <span className="font-mono">{userPercent}٪</span>
+                <span className="font-mono">{formatFaNumber(userPercent)}٪</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                 <div
@@ -359,8 +384,8 @@ export default function SaaSPlansAndSubscriptionPage() {
                 ></div>
               </div>
               <div className="text-[11px] text-slate-500 flex justify-between font-mono">
-                <span>{usage.currentUsers} کاربر</span>
-                <span>سقف: {usage.maxUsers} کاربر</span>
+                <span>{formatFaNumber(usage.currentUsers)} کاربر</span>
+                <span>سقف: {formatFaNumber(usage.maxUsers)} کاربر</span>
               </div>
             </div>
 
@@ -368,7 +393,7 @@ export default function SaaSPlansAndSubscriptionPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                 <span>فضای ذخیره‌سازی ابری:</span>
-                <span className="font-mono">{storagePercent}٪</span>
+                <span className="font-mono">{formatFaNumber(storagePercent)}٪</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                 <div
@@ -377,8 +402,8 @@ export default function SaaSPlansAndSubscriptionPage() {
                 ></div>
               </div>
               <div className="text-[11px] text-slate-500 flex justify-between font-mono">
-                <span>{usage.storageMb} مگابایت</span>
-                <span>سقف: {usage.maxStorageMb} MB</span>
+                <span>{formatFaNumber(usage.storageMb)} مگابایت</span>
+                <span>سقف: {formatFaNumber(usage.maxStorageMb)} مگابایت</span>
               </div>
             </div>
           </div>
@@ -404,7 +429,7 @@ export default function SaaSPlansAndSubscriptionPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {plans.map((p) => {
             const isCurrent = subscription.planTier === p.tier;
-            const price = billingCycle === 'YEARLY' ? p.yearlyPrice / 12 : p.monthlyPrice;
+            const price = billingCycle === 'YEARLY' ? Number(p.yearlyPrice) / 12 : Number(p.monthlyPrice);
 
             return (
               <div
@@ -428,13 +453,13 @@ export default function SaaSPlansAndSubscriptionPage() {
                   <div>
                     <div className="flex items-baseline gap-1 font-mono">
                       <span className="text-2xl font-black text-slate-950">
-                        {price.toLocaleString('fa-IR')}
+                        {formatFaNumber(Math.round(price))}
                       </span>
                       <span className="text-xs font-medium text-slate-500">ریال / ماه</span>
                     </div>
                     {billingCycle === 'YEARLY' && (
                       <div className="text-[10px] text-emerald-600 font-semibold mt-1">
-                        صورتحساب سالانه: {p.yearlyPrice.toLocaleString('fa-IR')} ریال
+                        صورتحساب سالانه: {formatFaNumber(p.yearlyPrice)} ریال
                       </div>
                     )}
                   </div>
@@ -442,15 +467,15 @@ export default function SaaSPlansAndSubscriptionPage() {
                   <div className="border-t pt-4 space-y-2.5 text-xs text-slate-700">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>تا {p.maxUsers} کاربر همزمان</span>
+                      <span>تا {formatFaNumber(p.maxUsers)} کاربر همزمان</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>{p.maxMonthlyTransactions.toLocaleString('fa-IR')} سند و تراکنش ماهانه</span>
+                      <span>{formatFaNumber(p.maxMonthlyTransactions)} سند و تراکنش ماهانه</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>{p.storageQuotaMb} مگابایت فضای ابری</span>
+                      <span>{formatFaNumber(p.storageQuotaMb)} مگابایت فضای ابری</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -512,18 +537,18 @@ export default function SaaSPlansAndSubscriptionPage() {
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>روزهای باقیمانده از طرح فعلی:</span>
-                  <strong className="font-mono text-purple-700">{upgradeCalculation.daysRemaining} روز</strong>
+                  <strong className="font-mono text-purple-700">{formatFaNumber(upgradeCalculation.daysRemaining)} روز</strong>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>اعتبار بلااستفاده طرح قبلی (تخفیف کسر شده):</span>
                   <span className="font-mono text-emerald-700 font-bold">
-                    -{upgradeCalculation.unusedCreditFromOldPlan.toLocaleString('fa-IR')} ریال
+                    -{formatFaNumber(upgradeCalculation.unusedCreditFromOldPlan)} ریال
                   </span>
                 </div>
                 <div className="border-t pt-2 flex justify-between font-black text-sm text-slate-900">
                   <span>مبلغ نهایی قابل پرداخت:</span>
                   <span className="font-mono text-purple-700">
-                    {upgradeCalculation.netPayableAmount.toLocaleString('fa-IR')} ریال
+                    {formatFaNumber(upgradeCalculation.netPayableAmount)} ریال
                   </span>
                 </div>
               </div>
