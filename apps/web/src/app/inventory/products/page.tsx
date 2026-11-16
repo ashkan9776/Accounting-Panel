@@ -19,6 +19,10 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
 
+  // واحدهای سنجش
+  const [units, setUnits] = useState<any[]>([]);
+  const [unitId, setUnitId] = useState<string>('unit-piece');
+
   // فرم افزودن کالا
   const [code, setCode] = useState(`PRD-${Date.now().toString().slice(-4)}`);
   const [name, setName] = useState('');
@@ -27,6 +31,18 @@ export default function ProductsPage() {
   const [taxExempt, setTaxExempt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadUnits = async () => {
+    try {
+      const res = await fetchApi('/inventory/units');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        setUnits(res.data);
+        setUnitId(res.data[0].id);
+      }
+    } catch {
+      // fallback
+    }
+  };
 
   const loadProducts = async () => {
     setLoading(true);
@@ -64,6 +80,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadProducts();
+    loadUnits();
   }, []);
 
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -79,7 +96,7 @@ export default function ProductsPage() {
       const payload = {
         code,
         name: name.trim(),
-        unitId: 'unit-piece-1',
+        unitId: unitId || (units[0]?.id ?? 'unit-piece'),
         type: 'GOODS',
         sellPrice: Number(sellPrice),
         purchasePrice: Number(purchasePrice),
@@ -164,14 +181,38 @@ export default function ProductsPage() {
             )}
 
             <form onSubmit={handleCreateProduct} className="space-y-3">
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1">کد کالا *</label>
-                <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-600 font-semibold mb-1">کد کالا *</label>
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-left text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-600 font-semibold mb-1">واحد سنجش کالا</label>
+                  <select
+                    value={unitId}
+                    onChange={(e) => setUnitId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs"
+                  >
+                    {units.length > 0 ? (
+                      units.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.title} ({u.symbol || u.code})
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="unit-piece">دستگاه / عدد</option>
+                        <option value="unit-box">کارتن / بسته</option>
+                        <option value="unit-kg">کیلوگرم</option>
+                      </>
+                    )}
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -181,7 +222,7 @@ export default function ProductsPage() {
                   placeholder="مثال: برنج طارم محلی..."
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs"
                 />
               </div>
 

@@ -104,9 +104,30 @@ export default function TrialBalancePage() {
   const isBalanced = reportData?.isBalanced ?? true;
 
   return (
-    <div className="space-y-6">
-      {/* هدر گزارش */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 print:space-y-2">
+      {/* سربرگ رسمی مخصوص پرینت و خروجی چاپی */}
+      <div className="print-only hidden mb-4 pb-3 border-b-2 border-slate-900 text-center">
+        <div className="flex items-center justify-between text-xs font-semibold text-slate-800 mb-2">
+          <div>شرکت صنایع پیشرو پارسیان (سهامی خاص)</div>
+          <div className="text-sm font-black text-slate-950">گزارش تراز آزمایشی دفاتر حسابداری</div>
+          <div>سال مالی: ۱۴۰۳ (فعال)</div>
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-slate-600">
+          <div>
+            سطح گزارش:{' '}
+            {level === 'SUBSIDIARY'
+              ? 'حساب‌های معین (سطح ۳)'
+              : level === 'HEAD'
+              ? 'حساب‌های کل (سطح ۲)'
+              : 'گروه حساب‌ها (سطح ۱)'}
+          </div>
+          <div>واحد مبالغ: ریال ایران</div>
+          <div>تاریخ استخراج: {new Date().toLocaleDateString('fa-IR')}</div>
+        </div>
+      </div>
+
+      {/* هدر صفحه در نمای وب (پنهان در پرینت) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print print:hidden">
         <div>
           <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
             <Scale className="w-6 h-6 text-purple-600" />
@@ -144,14 +165,14 @@ export default function TrialBalancePage() {
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 no-print print:hidden">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      {/* نوار فیلتر و سطح کدینگ */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs">
+      {/* نوار فیلتر و سطح کدینگ (پنهان در پرینت) */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs no-print print:hidden">
         <div className="flex items-center gap-3">
           <span className="font-bold text-slate-700">سطح گزارش‌گیری:</span>
           <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200">
@@ -208,8 +229,8 @@ export default function TrialBalancePage() {
       </div>
 
       {/* جدول تراز آزمایشی چهار و شش ستونی */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden print:border-none print:shadow-none print:rounded-none print:overflow-visible">
+        <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-right text-xs">
             <thead className="bg-slate-100 text-slate-700 border-b-2 border-slate-300 font-bold">
               <tr>

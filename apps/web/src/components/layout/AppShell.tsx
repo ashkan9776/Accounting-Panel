@@ -14,15 +14,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800">
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800 print:block print:h-auto print:overflow-visible print:bg-white">
       {/* سایدبار راست */}
-      <Sidebar />
+      <div className="no-print print:hidden">
+        <Sidebar />
+      </div>
 
       {/* ناحیه محتوای اصلی */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50">
-          <div className="max-w-7xl mx-auto">{children}</div>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:block print:h-auto print:overflow-visible print:w-full">
+        <div className="no-print print:hidden">
+          <Header />
+        </div>
+        <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50 print:p-0 print:m-0 print:overflow-visible print:bg-white print:w-full">
+          <div className="max-w-7xl mx-auto print:max-w-none print:w-full print:m-0">{children}</div>
         </main>
       </div>
     </div>

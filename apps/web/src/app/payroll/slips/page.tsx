@@ -138,35 +138,9 @@ export default function PayrollSlipsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Print Styling */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #printable-slip,
-          #printable-slip * {
-            visibility: visible;
-          }
-          #printable-slip {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 20px;
-            box-shadow: none !important;
-            border: 1px solid #999 !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-
+    <div className="space-y-6 print:space-y-2">
       {/* Header (No Print) */}
-      <div className="no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+      <div className="no-print print:hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2.5">
             <FileText className="w-7 h-7 text-emerald-600" />
@@ -206,7 +180,7 @@ export default function PayrollSlipsPage() {
       {/* Printable Pay Slip Container */}
       <div
         id="printable-slip"
-        className="bg-white rounded-xl border border-slate-300 shadow-lg p-8 max-w-4xl mx-auto space-y-6 text-slate-800"
+        className="bg-white rounded-xl border border-slate-300 shadow-lg p-8 max-w-4xl mx-auto space-y-6 text-slate-800 print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none"
       >
         {/* Slip Header */}
         <div className="border-b-2 border-slate-800 pb-5">

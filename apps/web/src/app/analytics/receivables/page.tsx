@@ -85,9 +85,23 @@ export default function ReceivablesAgingPage() {
   );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+    <div className="space-y-6 print:space-y-2">
+      {/* سربرگ رسمی مخصوص پرینت سن‌سنجی مطالبات */}
+      <div className="print-only hidden mb-4 pb-3 border-b-2 border-slate-900 text-center">
+        <div className="flex items-center justify-between text-xs font-semibold text-slate-800 mb-2">
+          <div>شرکت صنایع پیشرو پارسیان</div>
+          <div className="text-sm font-black text-slate-950">گزارش سن‌سنجی مطالبات تجاری (Receivables Aging)</div>
+          <div>مبنای سررسید: {asOfDate}</div>
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-slate-600">
+          <div>مجموع کل مطالبات: {totalReceivables.toLocaleString('fa-IR')} ریال</div>
+          <div>واحد مبالغ: ریال ایران</div>
+          <div>تاریخ چاپ: {new Date().toLocaleDateString('fa-IR')}</div>
+        </div>
+      </div>
+
+      {/* Header (No Print) */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm no-print print:hidden">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
             <Link href="/dashboard" className="hover:text-emerald-600 transition-colors">
@@ -159,8 +173,8 @@ export default function ReceivablesAgingPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden print:border-none print:shadow-none print:rounded-none print:overflow-visible">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between no-print print:hidden">
           <div className="relative w-72">
             <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
             <input
@@ -176,7 +190,7 @@ export default function ReceivablesAgingPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-right text-xs">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold">
               <tr>

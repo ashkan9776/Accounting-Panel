@@ -154,7 +154,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-200 min-h-screen flex flex-col shadow-xl select-none">
+    <aside className="w-64 bg-slate-900 text-slate-200 min-h-screen flex flex-col shadow-xl select-none no-print print:hidden">
       {/* برند و لوگو */}
       <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-800">
         <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shadow-md shadow-emerald-900/50">

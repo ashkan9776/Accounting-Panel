@@ -46,7 +46,7 @@ export function Header() {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shadow-xs sticky top-0 z-30">
+    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shadow-xs sticky top-0 z-30 no-print print:hidden">
       {/* اطلاعات شرکت، شعبه و سال مالی */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-xs text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">

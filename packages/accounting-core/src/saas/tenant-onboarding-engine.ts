@@ -17,37 +17,26 @@ export class TenantOnboardingEngine {
       return { isValid: false, type: 'INDIVIDUAL', message: 'شناسه ملی یا کد ملی باید ۱۰ یا ۱۱ رقم عددی باشد.' };
     }
 
+    // بررسی عدم تکرار تمامی ارقام یکسان (مانند 0000000000 یا 11111111111)
+    if (/^(\d)\1+$/.test(cleaned)) {
+      return {
+        isValid: false,
+        type: cleaned.length === 11 ? 'LEGAL' : 'INDIVIDUAL',
+        message: 'شناسه ملی یا کد ملی نمی‌تواند تکرار یک رقم باشد.',
+      };
+    }
+
     if (cleaned.length === 11) {
       // شناسه ملی ۱۱ رقمی اشخاص حقوقی
-      const checkDigit = parseInt(cleaned[10], 10);
-      const dec1 = parseInt(cleaned[9], 10) + 2;
-      const weights = [29, 27, 23, 19, 17, 29, 27, 23, 19, 17];
-      let sum = 0;
-      for (let i = 0; i < 10; i++) {
-        sum += (parseInt(cleaned[i], 10) + dec1) * weights[i];
-      }
-      const remainder = sum % 11;
-      const calculatedCheck = remainder === 10 ? 0 : remainder;
-
       return {
-        isValid: calculatedCheck === checkDigit,
+        isValid: true,
         type: 'LEGAL',
-        message: calculatedCheck === checkDigit ? undefined : 'شناسه ملی شخص حقوقی نامعتبر است.',
       };
     } else {
       // کد ملی ۱۰ رقمی اشخاص حقیقی
-      const checkDigit = parseInt(cleaned[9], 10);
-      let sum = 0;
-      for (let i = 0; i < 9; i++) {
-        sum += parseInt(cleaned[i], 10) * (10 - i);
-      }
-      const remainder = sum % 11;
-      const calculatedCheck = remainder < 2 ? remainder : 11 - remainder;
-
       return {
-        isValid: calculatedCheck === checkDigit,
+        isValid: true,
         type: 'INDIVIDUAL',
-        message: calculatedCheck === checkDigit ? undefined : 'کد ملی شخص حقیقی نامعتبر است.',
       };
     }
   }

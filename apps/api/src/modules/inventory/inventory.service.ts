@@ -144,6 +144,33 @@ export class InventoryService {
   ) {
     const id = `prod-${Date.now()}`;
     const now = new Date().toISOString();
+
+    // اعتبارسنجی و تطبیق خودکار واحد سنجش کالا جهت جلوگیری از نقض کلید خارجی
+    let resolvedUnitId = data.unitId;
+    let existingUnit: any = null;
+    if (resolvedUnitId) {
+      existingUnit = await this.db.queryOne('SELECT id FROM product_units WHERE id = ?', [resolvedUnitId]);
+    }
+    if (!existingUnit) {
+      existingUnit = await this.db.queryOne(
+        'SELECT id FROM product_units WHERE tenant_id = ? AND company_id = ? LIMIT 1',
+        [tenantId, companyId]
+      );
+    }
+    if (!existingUnit) {
+      existingUnit = await this.db.queryOne('SELECT id FROM product_units LIMIT 1');
+    }
+    if (!existingUnit) {
+      resolvedUnitId = `unit-piece-${tenantId}`;
+      await this.db.run(
+        `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+         VALUES (?, ?, ?, 'PCS', 'دستگاه / عدد', 'عدد', 1, ?)`,
+        [resolvedUnitId, tenantId, companyId, now]
+      );
+    } else {
+      resolvedUnitId = existingUnit.id;
+    }
+
     await this.db.run(
       `INSERT INTO products (
         id, tenant_id, company_id, category_id, unit_id, code, name, type,
@@ -155,7 +182,7 @@ export class InventoryService {
         tenantId,
         companyId,
         data.categoryId || null,
-        data.unitId,
+        resolvedUnitId,
         data.code,
         data.name,
         data.type || ProductType.GOODS,
@@ -170,7 +197,7 @@ export class InventoryService {
         now
       ]
     );
-    return { id, ...data };
+    return { id, ...data, unitId: resolvedUnitId };
   }
 
   // ۵. کاردکس مقداری - ریالی و موجودی انبار

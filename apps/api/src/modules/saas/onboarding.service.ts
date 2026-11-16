@@ -68,6 +68,23 @@ export class OnboardingService {
       [warehouseId, tenantId, companyId, branchId, now],
     );
 
+    // ۳.۱. ایجاد واحدهای سنجش پیش‌فرض (عدد، کیلوگرم، بسته)
+    await this.db.run(
+      `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+       VALUES (?, ?, ?, 'PCS', 'دستگاه / عدد', 'عدد', 1, ?)`,
+      [`unit-piece-${tenantId}`, tenantId, companyId, now],
+    );
+    await this.db.run(
+      `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+       VALUES (?, ?, ?, 'KG', 'کیلوگرم', 'کیلو', 0, ?)`,
+      [`unit-kg-${tenantId}`, tenantId, companyId, now],
+    );
+    await this.db.run(
+      `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+       VALUES (?, ?, ?, 'BOX', 'بسته / کارتن', 'بسته', 0, ?)`,
+      [`unit-box-${tenantId}`, tenantId, companyId, now],
+    );
+
     // ۴. ایجاد سال مالی
     await this.db.run(
       `INSERT INTO fiscal_years (

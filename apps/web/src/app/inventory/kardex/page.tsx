@@ -152,10 +152,27 @@ export default function KardexPage() {
   );
   const lastEntry = kardexEntries[kardexEntries.length - 1];
 
+  const currentWarehouse = warehouses.find((w) => w.id === selectedWarehouseId);
+  const currentProduct = products.find((p) => p.id === selectedProductId);
+
   return (
-    <div className="space-y-6">
-      {/* هدر صفحه */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 print:space-y-2">
+      {/* سربرگ رسمی مخصوص پرینت کاردکس */}
+      <div className="print-only hidden mb-4 pb-3 border-b-2 border-slate-900 text-center">
+        <div className="flex items-center justify-between text-xs font-semibold text-slate-800 mb-2">
+          <div>شرکت صنایع پیشرو پارسیان</div>
+          <div className="text-sm font-black text-slate-950">کاردکس مقداری و ریالی کالا (روش میانگین موزون)</div>
+          <div>انبار: {currentWarehouse?.name || 'انبار مرکزی'}</div>
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-slate-600">
+          <div>کالا: {currentProduct ? `${currentProduct.name} (${currentProduct.code})` : 'تمامی کالاها'}</div>
+          <div>واحد مبالغ: ریال ایران</div>
+          <div>تاریخ چاپ: {new Date().toLocaleDateString('fa-IR')}</div>
+        </div>
+      </div>
+
+      {/* هدر صفحه در نمای وب (پنهان در پرینت) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print print:hidden">
         <div>
           <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
             <Layers className="w-6 h-6 text-emerald-600" />
@@ -185,8 +202,8 @@ export default function KardexPage() {
         </div>
       </div>
 
-      {/* نوار فیلتر و انتخاب کالا و انبار */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs">
+      {/* نوار فیلتر و انتخاب کالا و انبار (پنهان در پرینت) */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs no-print print:hidden">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5 font-bold text-slate-700">
             <Filter className="w-4 h-4 text-emerald-600" />
@@ -248,8 +265,8 @@ export default function KardexPage() {
       </div>
 
       {/* جدول کاردکس ۱۰ ستونی استاندارد */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden print:border-none print:shadow-none print:rounded-none print:overflow-visible">
+        <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-right text-xs">
             <thead className="bg-slate-100 text-slate-700 border-b-2 border-slate-300 font-bold">
               <tr>

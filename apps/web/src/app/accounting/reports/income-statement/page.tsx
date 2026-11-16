@@ -60,35 +60,9 @@ export default function IncomeStatementPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* استایل اختصاصی چاپ */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #printable-income-statement,
-          #printable-income-statement * {
-            visibility: visible;
-          }
-          #printable-income-statement {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 10px;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-
+    <div className="space-y-6 print:space-y-2">
       {/* Header (No Print) */}
-      <div className="no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+      <div className="no-print print:hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
             <Link href="/accounting/reports/trial-balance" className="hover:text-emerald-600 transition-colors">
@@ -200,7 +174,7 @@ export default function IncomeStatementPage() {
       {/* Official Printable Income Statement Document */}
       <div
         id="printable-income-statement"
-        className="bg-white rounded-xl border border-slate-300 shadow-md p-8 max-w-4xl mx-auto space-y-6 text-slate-800"
+        className="bg-white rounded-xl border border-slate-300 shadow-md p-8 max-w-4xl mx-auto space-y-6 text-slate-800 print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none"
       >
         {/* Document Header */}
         <div className="text-center border-b-2 border-slate-800 pb-5 space-y-1.5">

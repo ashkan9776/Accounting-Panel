@@ -47,3 +47,140 @@ body {
   font-size: 0.875rem;
   border-bottom: 1px solid #e2e8f0;
 }
+
+/* ========================================================
+   استایل‌های سراسری چاپ استاندارد گزارشات حسابداری (Print Stylesheet)
+   ======================================================== */
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
+
+@media print {
+  /* ۱. پنهان‌سازی اجباری سایدبار، هدرها، دکمه‌ها و المان‌های ناوبری */
+  aside,
+  nav,
+  header,
+  footer,
+  .no-print,
+  [data-sidebar],
+  button,
+  .btn,
+  input:not([type="checkbox"]),
+  select,
+  .print-hidden,
+  [role="dialog"],
+  .modal-backdrop {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+  }
+
+  /* ۲. بازنشانی ساختار ریشه برای استفاده از ۱۰۰٪ عرض کاغذ */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 10pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* شکستن ساختار Flex سایدبار در حالت پرینت */
+  .flex {
+    display: block !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    height: auto !important;
+    background: transparent !important;
+  }
+
+  div {
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
+  .max-w-7xl,
+  .container,
+  .mx-auto {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* ۳. نمایش المان‌های اختصاصی گزارش رسمی چاپی */
+  .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* ۴. قالب‌بندی شفاف جداول مالی در چاپ */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-top: 8px !important;
+    margin-bottom: 8px !important;
+    page-break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #475569 !important;
+    padding: 5px 6px !important;
+    color: #000000 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.3 !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  tfoot td {
+    background-color: #e2e8f0 !important;
+    font-weight: 800 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    size: auto;
+    margin: 10mm 8mm;
+  }
+}
