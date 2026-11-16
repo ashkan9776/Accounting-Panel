@@ -26,17 +26,10 @@ export class ReportsService {
     if (entries.length === 0) return [];
 
     const ids = entries.map((e: any) => e.id);
-    const chunkSize = 500;
-    const allLines: any[] = [];
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
-      const placeholders = chunk.map(() => '?').join(',');
-      const chunkLines = await this.db.query(
-        `SELECT * FROM journal_lines WHERE journal_entry_id IN (${placeholders}) ORDER BY row_number ASC`,
-        chunk
-      );
-      allLines.push(...chunkLines);
-    }
+    const allLines = await this.db.query(
+      `SELECT * FROM journal_lines WHERE journal_entry_id = ANY($1::text[]) ORDER BY row_number ASC`,
+      [ids]
+    );
 
     const linesByEntry = new Map<string, any[]>();
     for (const l of allLines) {

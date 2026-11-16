@@ -8,9 +8,6 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# نصب ابزارهای ساخت مورد نیاز sqlite3
-RUN apk add --no-cache python3 make g++
-
 # فعال‌سازی pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -30,6 +27,10 @@ COPY apps/api ./apps/api
 RUN pnpm --filter @accounting/core build
 RUN pnpm --filter @accounting/api build
 
+# اطمینان از کپی شدن فایل‌های شماتیک SQL در dist
+RUN mkdir -p /app/apps/api/dist/database && \
+    cp -r /app/apps/api/src/database/*.sql /app/apps/api/dist/database/ 2>/dev/null || true
+
 # =========================================================================
 # مرحله ۲: ایمیج نهایی و بهینه‌سازی‌شده برای اجرا (Runtime)
 # =========================================================================
@@ -44,9 +45,7 @@ ENV PORT=3000
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 appuser
 
-# ساخت دایرکتوری پایگاه‌داده و ذخیره‌سازی داده‌ها
-RUN mkdir -p /app/apps/api/storage && \
-    chown -R appuser:nodejs /app
+RUN chown -R appuser:nodejs /app
 
 # کپی فایل‌های اجرایی از مرحله بیلد
 COPY --from=builder --chown=appuser:nodejs /app/node_modules ./node_modules

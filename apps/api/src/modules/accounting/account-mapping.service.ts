@@ -78,7 +78,7 @@ export class AccountMappingService {
     const defaultCode = DEFAULT_ACCOUNT_CODES[key];
     if (defaultCode) {
       const sub = await this.db.queryOne<any>(
-        'SELECT id FROM account_subsidiaries WHERE tenant_id = ? AND company_id = ? AND code = ? AND is_active = 1',
+        'SELECT id FROM account_subsidiaries WHERE tenant_id = ? AND company_id = ? AND code = ? AND is_active = true',
         [tenantId, companyId, defaultCode],
       );
 

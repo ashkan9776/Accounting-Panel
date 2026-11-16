@@ -24,7 +24,7 @@ export class SecurityService {
     await this.db.run(
       `INSERT INTO user_security_settings (
         id, user_id, two_factor_enabled, two_factor_secret, backup_codes_json, updated_at
-      ) VALUES (?, ?, 0, ?, ?, ?)
+      ) VALUES (?, ?, false, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         two_factor_secret = excluded.two_factor_secret,
         backup_codes_json = excluded.backup_codes_json,
@@ -55,7 +55,7 @@ export class SecurityService {
 
     const now = new Date().toISOString();
     await this.db.run(
-      `UPDATE user_security_settings SET two_factor_enabled = 1, updated_at = ? WHERE user_id = ?`,
+      `UPDATE user_security_settings SET two_factor_enabled = true, updated_at = ? WHERE user_id = ?`,
       [now, userId],
     );
 

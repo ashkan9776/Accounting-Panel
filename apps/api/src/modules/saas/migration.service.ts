@@ -57,12 +57,12 @@ export class MigrationService {
           `INSERT INTO account_subsidiaries (
             id, tenant_id, company_id, head_id, code, title, nature,
             requires_floating_dimension_1, is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, false, true)
           ON CONFLICT(tenant_id, company_id, code) DO UPDATE SET
             title = excluded.title,
             nature = excluded.nature,
             head_id = excluded.head_id,
-            is_active = 1`,
+            is_active = true`,
           [subId, tenantId, companyId, headId, acc.code, acc.name, acc.nature],
         );
         insertedCount++;
@@ -122,23 +122,32 @@ export class MigrationService {
 
       // ۱. ایجاد بعد تفصیلی (Floating Dimension)
       await this.db.run(
-        `INSERT OR REPLACE INTO floating_dimensions (
+        `INSERT INTO floating_dimensions (
           id, tenant_id, company_id, dimension_type, code, title, reference_id, is_active, created_at
-        ) VALUES (?, ?, ?, 'PARTY', ?, ?, ?, 1, ?)`,
+        ) VALUES (?, ?, ?, 'PARTY', ?, ?, ?, true, ?)
+        ON CONFLICT (tenant_id, company_id, code) DO UPDATE SET
+          title = EXCLUDED.title,
+          is_active = true`,
         [dimId, tenantId, companyId, p.code, p.name, partyId, now],
       );
 
       // ۲. ثبت در parties با لینک به تفصیلی
       await this.db.run(
-        `INSERT OR REPLACE INTO parties (
-          id, tenant_id, company_id, party_type, name, national_id,
+        `INSERT INTO parties (
+          id, tenant_id, company_id, code, party_type, name, national_id,
           economic_code, mobile, phone, address, credit_limit, is_customer, is_supplier,
           floating_dimension_id, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, 1, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, true, ?, true, ?)
+        ON CONFLICT (tenant_id, company_id, code) DO UPDATE SET
+          name = EXCLUDED.name,
+          national_id = EXCLUDED.national_id,
+          mobile = EXCLUDED.mobile,
+          is_active = true`,
         [
           partyId,
           tenantId,
           companyId,
+          p.code,
           dbPartyType,
           p.name,
           p.nationalId || null,
@@ -211,10 +220,15 @@ export class MigrationService {
     for (const prod of validation.parsedData) {
       const prodId = randomUUID();
       await this.db.run(
-        `INSERT OR REPLACE INTO products (
+        `INSERT INTO products (
           id, tenant_id, company_id, unit_id, code, name, type, barcode,
           vat_rate, sell_price, purchase_price, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)
+        ON CONFLICT (tenant_id, company_id, code) DO UPDATE SET
+          name = EXCLUDED.name,
+          sell_price = EXCLUDED.sell_price,
+          purchase_price = EXCLUDED.purchase_price,
+          is_active = true`,
         [
           prodId,
           tenantId,

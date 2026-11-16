@@ -1,7 +1,7 @@
 import * as bcrypt from 'bcryptjs';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as sqlite3 from 'sqlite3';
+import { DatabaseService } from './database.service';
 import {
   STANDARD_IRANIAN_GROUPS,
   STANDARD_IRANIAN_HEADS,
@@ -12,69 +12,38 @@ import {
   MoadianCryptoEngine
 } from '@accounting/core';
 
-export async function runSeed() {
-  const storageDir = path.resolve(process.cwd(), 'storage');
-  if (!fs.existsSync(storageDir)) {
-    fs.mkdirSync(storageDir, { recursive: true });
+export async function runSeed(existingDb?: DatabaseService) {
+  const db = existingDb || new DatabaseService();
+  if (!existingDb) {
+    await db.connect();
+    await db.initSchema();
   }
-  const dbPath = process.env.DATABASE_PATH || path.join(storageDir, 'accounting.db');
-  console.log(`[Seed] Connecting to database at: ${dbPath}`);
+  console.log('[Seed] Connected to PostgreSQL database.');
 
-  const db = new sqlite3.Database(dbPath);
-
-  const exec = (sql: string) =>
-    new Promise<void>((resolve, reject) => {
-      db.exec(sql, (err) => (err ? reject(err) : resolve()));
-    });
-
-  const run = (sql: string, params: any[] = []) =>
-    new Promise<void>((resolve, reject) => {
-      db.run(sql, params, (err) => (err ? reject(err) : resolve()));
-    });
+  const exec = (sql: string) => db.exec(sql);
+  const run = (sql: string, params: any[] = []) => db.run(sql, params).then(() => {});
 
   // ۱. اعمال اسکیما
   const schemaPath = path.resolve(__dirname, 'schema.sql');
   const schemaSql = fs.readFileSync(schemaPath, 'utf8');
   await exec(schemaSql);
   await exec(`
-    DELETE FROM audit_logs;
-    DELETE FROM journal_lines;
-    DELETE FROM journal_entries;
-    DELETE FROM cheques;
-    DELETE FROM cheque_status_history;
-    DELETE FROM money_transfers;
-    DELETE FROM stock_ledger_entries;
-    DELETE FROM purchase_document_items;
-    DELETE FROM purchase_documents;
-    DELETE FROM sales_document_items;
-    DELETE FROM sales_documents;
-    DELETE FROM inventory_count_items;
-    DELETE FROM inventory_counts;
-    DELETE FROM product_variants;
-    DELETE FROM products;
-    DELETE FROM unit_conversions;
-    DELETE FROM product_units;
-    DELETE FROM product_categories;
-    DELETE FROM warehouses;
-    DELETE FROM moadian_reconciliations;
-    DELETE FROM moadian_outbox_queue;
-    DELETE FROM moadian_invoice_items;
-    DELETE FROM moadian_invoices;
-    DELETE FROM moadian_unit_mappings;
-    DELETE FROM moadian_settings;
-    DELETE FROM pos_order_items;
-    DELETE FROM pos_orders;
-    DELETE FROM pos_cash_movements;
-    DELETE FROM pos_shifts;
-    DELETE FROM pos_terminals;
-    DELETE FROM restaurant_deliveries;
-    DELETE FROM restaurant_order_items;
-    DELETE FROM restaurant_kds_tickets;
-    DELETE FROM restaurant_orders;
-    DELETE FROM restaurant_recipe_items;
-    DELETE FROM restaurant_recipes;
-    DELETE FROM restaurant_tables;
-    DELETE FROM restaurant_sections;
+    DELETE FROM attendance_logs;
+    DELETE FROM hardware_terminals;
+    DELETE FROM visitor_visits;
+    DELETE FROM online_payment_transactions;
+    DELETE FROM online_order_items;
+    DELETE FROM online_orders;
+    DELETE FROM financial_alerts;
+    DELETE FROM financial_alert_rules;
+    DELETE FROM dashboard_widgets;
+    DELETE FROM tax_statutory_reports;
+    DELETE FROM fixed_asset_depreciation_records;
+    DELETE FROM fixed_assets;
+    DELETE FROM payroll_slips;
+    DELETE FROM payroll_periods;
+    DELETE FROM payroll_contracts;
+    DELETE FROM payroll_employees;
     DELETE FROM manufacturing_scraps;
     DELETE FROM manufacturing_order_operations;
     DELETE FROM manufacturing_order_materials;
@@ -83,13 +52,71 @@ export async function runSeed() {
     DELETE FROM manufacturing_bom_items;
     DELETE FROM manufacturing_boms;
     DELETE FROM manufacturing_work_centers;
-    DELETE FROM tax_statutory_reports;
-    DELETE FROM fixed_asset_depreciation_records;
-    DELETE FROM fixed_assets;
-    DELETE FROM payroll_slips;
-    DELETE FROM payroll_periods;
-    DELETE FROM payroll_contracts;
-    DELETE FROM payroll_employees;
+    DELETE FROM restaurant_deliveries;
+    DELETE FROM restaurant_order_items;
+    DELETE FROM restaurant_kds_tickets;
+    DELETE FROM restaurant_orders;
+    DELETE FROM restaurant_recipe_items;
+    DELETE FROM restaurant_recipes;
+    DELETE FROM restaurant_menu_categories;
+    DELETE FROM restaurant_tables;
+    DELETE FROM restaurant_sections;
+    DELETE FROM pos_order_items;
+    DELETE FROM pos_orders;
+    DELETE FROM pos_cash_movements;
+    DELETE FROM pos_shifts;
+    DELETE FROM pos_terminals;
+    DELETE FROM moadian_reconciliations;
+    DELETE FROM moadian_outbox_queue;
+    DELETE FROM moadian_invoice_items;
+    DELETE FROM moadian_invoices;
+    DELETE FROM moadian_unit_mappings;
+    DELETE FROM moadian_settings;
+    DELETE FROM inventory_count_items;
+    DELETE FROM inventory_counts;
+    DELETE FROM sales_document_items;
+    DELETE FROM sales_documents;
+    DELETE FROM purchase_document_items;
+    DELETE FROM purchase_documents;
+    DELETE FROM stock_ledger_entries;
+    DELETE FROM product_variants;
+    DELETE FROM products;
+    DELETE FROM unit_conversions;
+    DELETE FROM product_units;
+    DELETE FROM product_categories;
+    DELETE FROM warehouses;
+    DELETE FROM money_transfers;
+    DELETE FROM cheque_status_history;
+    DELETE FROM cheques;
+    DELETE FROM petty_cash_funds;
+    DELETE FROM cash_desks;
+    DELETE FROM bank_accounts;
+    DELETE FROM parties;
+    DELETE FROM audit_logs;
+    DELETE FROM journal_lines;
+    DELETE FROM journal_entries;
+    DELETE FROM account_mappings;
+    DELETE FROM floating_dimensions;
+    DELETE FROM account_subsidiaries;
+    DELETE FROM account_heads;
+    DELETE FROM account_groups;
+    DELETE FROM role_permissions;
+    DELETE FROM user_roles;
+    DELETE FROM permissions;
+    DELETE FROM roles;
+    DELETE FROM user_security_settings;
+    DELETE FROM security_audit_logs;
+    DELETE FROM tenant_usage_quotas;
+    DELETE FROM tenant_subscriptions;
+    DELETE FROM saas_plans;
+    DELETE FROM users;
+    DELETE FROM fiscal_periods;
+    DELETE FROM fiscal_years;
+    DELETE FROM branches;
+    DELETE FROM companies;
+    DELETE FROM tenants;
+    DELETE FROM rule_versions;
+    DELETE FROM rule_definitions;
   `);
   console.log('[Seed] Schema applied and tables initialized successfully.');
 
@@ -98,16 +125,14 @@ export async function runSeed() {
   // ۲. درج تنانت پیش‌فرض
   const tenantId = 'tenant-pishro';
   await run(
-    `INSERT OR REPLACE INTO tenants (id, subdomain, name, plan_id, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [tenantId, 'pishro-pars', 'هلدینگ بازرگانی و خدماتی پیشرو پارس', 'ENTERPRISE', 1, now]
+    `INSERT INTO tenants (id, subdomain, name, plan_id, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET subdomain = EXCLUDED.subdomain, name = EXCLUDED.name, plan_id = EXCLUDED.plan_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
+    [tenantId, 'pishro-pars', 'هلدینگ بازرگانی و خدماتی پیشرو پارس', 'ENTERPRISE', true, now]
   );
 
   // ۳. درج شرکت پیش‌فرض
   const companyId = 'comp-pishro-1';
   await run(
-    `INSERT OR REPLACE INTO companies (id, tenant_id, legal_name, trade_name, national_id, economic_code, registration_number, tax_office_code, postal_code, address, phone, currency_code, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO companies (id, tenant_id, legal_name, trade_name, national_id, economic_code, registration_number, tax_office_code, postal_code, address, phone, currency_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, legal_name = EXCLUDED.legal_name, trade_name = EXCLUDED.trade_name, national_id = EXCLUDED.national_id, economic_code = EXCLUDED.economic_code, registration_number = EXCLUDED.registration_number, tax_office_code = EXCLUDED.tax_office_code, postal_code = EXCLUDED.postal_code, address = EXCLUDED.address, phone = EXCLUDED.phone, currency_code = EXCLUDED.currency_code, created_at = EXCLUDED.created_at`,
     [
       companyId,
       tenantId,
@@ -128,8 +153,7 @@ export async function runSeed() {
   // ۴. درج شعبه مرکزی
   const branchId = 'branch-central-1';
   await run(
-    `INSERT OR REPLACE INTO branches (id, tenant_id, company_id, code, name, is_central, address, phone, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO branches (id, tenant_id, company_id, code, name, is_central, address, phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, name = EXCLUDED.name, is_central = EXCLUDED.is_central, address = EXCLUDED.address, phone = EXCLUDED.phone, created_at = EXCLUDED.created_at`,
     [
       branchId,
       tenantId,
@@ -146,8 +170,7 @@ export async function runSeed() {
   // ۵. درج سال مالی ۱۴۰۳
   const fiscalYearId = 'fy-1403';
   await run(
-    `INSERT OR REPLACE INTO fiscal_years (id, tenant_id, company_id, title, start_date_shamsi, end_date_shamsi, start_date_gregorian, end_date_gregorian, is_closed, is_locked, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO fiscal_years (id, tenant_id, company_id, title, start_date_shamsi, end_date_shamsi, start_date_gregorian, end_date_gregorian, is_closed, is_locked, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, title = EXCLUDED.title, start_date_shamsi = EXCLUDED.start_date_shamsi, end_date_shamsi = EXCLUDED.end_date_shamsi, start_date_gregorian = EXCLUDED.start_date_gregorian, end_date_gregorian = EXCLUDED.end_date_gregorian, is_closed = EXCLUDED.is_closed, is_locked = EXCLUDED.is_locked, created_at = EXCLUDED.created_at`,
     [
       fiscalYearId,
       tenantId,
@@ -167,9 +190,8 @@ export async function runSeed() {
   for (let m = 1; m <= 12; m++) {
     const periodId = `period-1403-${m.toString().padStart(2, '0')}`;
     await run(
-      `INSERT OR REPLACE INTO fiscal_periods (id, tenant_id, fiscal_year_id, period_number, title, is_closed)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [periodId, tenantId, fiscalYearId, m, `دوره مالی ماه ${m}`, 0]
+      `INSERT INTO fiscal_periods (id, tenant_id, fiscal_year_id, period_number, title, is_closed) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, fiscal_year_id = EXCLUDED.fiscal_year_id, period_number = EXCLUDED.period_number, title = EXCLUDED.title, is_closed = EXCLUDED.is_closed`,
+      [periodId, tenantId, fiscalYearId, m, `دوره مالی ماه ${m}`, false]
     );
   }
 
@@ -177,24 +199,23 @@ export async function runSeed() {
   const roleAdminId = 'role-super-admin';
   const roleAccountantId = 'role-accountant';
   await run(
-    `INSERT OR REPLACE INTO roles (id, tenant_id, code, title, description) VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO roles (id, tenant_id, code, title, description) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, code = EXCLUDED.code, title = EXCLUDED.title, description = EXCLUDED.description`,
     [roleAdminId, tenantId, 'SUPER_ADMIN', 'مدیر ارشد مالی و سیستم', 'دسترسی نامحدود به تمامی ماژول‌ها و تنظیمات']
   );
   await run(
-    `INSERT OR REPLACE INTO roles (id, tenant_id, code, title, description) VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO roles (id, tenant_id, code, title, description) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, code = EXCLUDED.code, title = EXCLUDED.title, description = EXCLUDED.description`,
     [roleAccountantId, tenantId, 'ACCOUNTANT', 'حسابدار ارشد', 'ثبت و تایید اسناد حسابداری، استخراج دفاتر و تراز']
   );
 
   const passwordHash = await bcrypt.hash('admin12345', 10);
   const userId = 'user-admin-1';
   await run(
-    `INSERT OR REPLACE INTO users (id, tenant_id, mobile, email, password_hash, full_name, is_super_admin, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [userId, tenantId, '09120000000', 'admin@pishro.ir', passwordHash, 'مدیر ارشد مالی', 1, 1, now]
+    `INSERT INTO users (id, tenant_id, mobile, email, password_hash, full_name, is_super_admin, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, mobile = EXCLUDED.mobile, email = EXCLUDED.email, password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name, is_super_admin = EXCLUDED.is_super_admin, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
+    [userId, tenantId, '09120000000', 'admin@pishro.ir', passwordHash, 'مدیر ارشد مالی', true, true, now]
   );
 
   await run(
-    `INSERT OR REPLACE INTO user_roles (user_id, role_id, branch_id) VALUES (?, ?, ?)`,
+    `INSERT INTO user_roles (user_id, role_id, branch_id) VALUES (?, ?, ?) ON CONFLICT (user_id, role_id) DO UPDATE SET branch_id = EXCLUDED.branch_id`,
     [userId, roleAdminId, branchId]
   );
 
@@ -206,11 +227,11 @@ export async function runSeed() {
   ];
   for (const perm of permissionsList) {
     await run(
-      `INSERT OR REPLACE INTO permissions (id, code, module, title) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO permissions (id, code, module, title) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, module = EXCLUDED.module, title = EXCLUDED.title`,
       [perm.id, perm.code, perm.module, perm.title],
     );
     await run(
-      `INSERT OR REPLACE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
+      `INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?) ON CONFLICT (role_id, permission_id) DO NOTHING`,
       [roleAdminId, perm.id],
     );
   }
@@ -219,24 +240,21 @@ export async function runSeed() {
   console.log('[Seed] Seeding Chart of Accounts...');
   for (const g of STANDARD_IRANIAN_GROUPS) {
     await run(
-      `INSERT OR REPLACE INTO account_groups (id, tenant_id, company_id, code, title, nature, description)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO account_groups (id, tenant_id, company_id, code, title, nature, description) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, title = EXCLUDED.title, nature = EXCLUDED.nature, description = EXCLUDED.description`,
       [g.id, tenantId, companyId, g.code, g.title, g.nature, g.description || '']
     );
   }
 
   for (const h of STANDARD_IRANIAN_HEADS) {
     await run(
-      `INSERT OR REPLACE INTO account_heads (id, tenant_id, company_id, group_id, code, title, nature, description)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO account_heads (id, tenant_id, company_id, group_id, code, title, nature, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, group_id = EXCLUDED.group_id, code = EXCLUDED.code, title = EXCLUDED.title, nature = EXCLUDED.nature, description = EXCLUDED.description`,
       [h.id, tenantId, companyId, h.groupId, h.code, h.title, h.nature, h.description || '']
     );
   }
 
   for (const s of STANDARD_IRANIAN_SUBSIDIARIES) {
     await run(
-      `INSERT OR REPLACE INTO account_subsidiaries (id, tenant_id, company_id, head_id, code, title, nature, requires_floating_dimension_1, allowed_dimension_1_type, requires_floating_dimension_2, allowed_dimension_2_type, requires_floating_dimension_3, allowed_dimension_3_type, is_currency_dependent, is_active, description)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO account_subsidiaries (id, tenant_id, company_id, head_id, code, title, nature, requires_floating_dimension_1, allowed_dimension_1_type, requires_floating_dimension_2, allowed_dimension_2_type, requires_floating_dimension_3, allowed_dimension_3_type, is_currency_dependent, is_active, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, head_id = EXCLUDED.head_id, code = EXCLUDED.code, title = EXCLUDED.title, nature = EXCLUDED.nature, requires_floating_dimension_1 = EXCLUDED.requires_floating_dimension_1, allowed_dimension_1_type = EXCLUDED.allowed_dimension_1_type, requires_floating_dimension_2 = EXCLUDED.requires_floating_dimension_2, allowed_dimension_2_type = EXCLUDED.allowed_dimension_2_type, requires_floating_dimension_3 = EXCLUDED.requires_floating_dimension_3, allowed_dimension_3_type = EXCLUDED.allowed_dimension_3_type, is_currency_dependent = EXCLUDED.is_currency_dependent, is_active = EXCLUDED.is_active, description = EXCLUDED.description`,
       [
         s.id,
         tenantId,
@@ -245,14 +263,14 @@ export async function runSeed() {
         s.code,
         s.title,
         s.nature,
-        s.requiresFloatingDimension1 ? 1 : 0,
+        Boolean(s.requiresFloatingDimension1),
         s.allowedDimension1Type || null,
-        s.requiresFloatingDimension2 ? 1 : 0,
+        Boolean(s.requiresFloatingDimension2),
         s.allowedDimension2Type || null,
-        s.requiresFloatingDimension3 ? 1 : 0,
+        Boolean(s.requiresFloatingDimension3),
         s.allowedDimension3Type || null,
-        s.isCurrencyDependent ? 1 : 0,
-        s.isActive ? 1 : 0,
+        Boolean(s.isCurrencyDependent),
+        s.isActive !== false,
         s.description || ''
       ]
     );
@@ -274,9 +292,8 @@ export async function runSeed() {
 
   for (const dim of floatingDims) {
     await run(
-      `INSERT OR REPLACE INTO floating_dimensions (id, tenant_id, company_id, dimension_type, code, title, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [dim.id, tenantId, companyId, dim.type, dim.code, dim.title, 1, now]
+      `INSERT INTO floating_dimensions (id, tenant_id, company_id, dimension_type, code, title, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, dimension_type = EXCLUDED.dimension_type, code = EXCLUDED.code, title = EXCLUDED.title, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
+      [dim.id, tenantId, companyId, dim.type, dim.code, dim.title, true, now]
     );
   }
 
@@ -284,14 +301,12 @@ export async function runSeed() {
   console.log('[Seed] Seeding Versioned Rules...');
   for (const rule of DEFAULT_IRANIAN_RULES_1403) {
     await run(
-      `INSERT OR REPLACE INTO rule_definitions (id, rule_code, title, description)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO rule_definitions (id, rule_code, title, description) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET rule_code = EXCLUDED.rule_code, title = EXCLUDED.title, description = EXCLUDED.description`,
       [`def-${rule.ruleCode}`, rule.ruleCode, rule.legalReference, 'قاعده رسمی و نسخه‌دار دولتی']
     );
 
     await run(
-      `INSERT OR REPLACE INTO rule_versions (id, rule_definition_id, version_number, effective_from_shamsi, effective_to_shamsi, legal_reference, parameters_json, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO rule_versions (id, rule_definition_id, version_number, effective_from_shamsi, effective_to_shamsi, legal_reference, parameters_json, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET rule_definition_id = EXCLUDED.rule_definition_id, version_number = EXCLUDED.version_number, effective_from_shamsi = EXCLUDED.effective_from_shamsi, effective_to_shamsi = EXCLUDED.effective_to_shamsi, legal_reference = EXCLUDED.legal_reference, parameters_json = EXCLUDED.parameters_json, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [
         rule.id,
         `def-${rule.ruleCode}`,
@@ -300,7 +315,7 @@ export async function runSeed() {
         rule.effectiveToShamsi || null,
         rule.legalReference,
         JSON.stringify(rule.parameters),
-        rule.isActive ? 1 : 0,
+        rule.isActive !== false,
         now
       ]
     );
@@ -312,8 +327,7 @@ export async function runSeed() {
   // سند ۱: افتتاحیه (سرمایه و موجودی بانک)
   const entry1Id = 'entry-seed-1';
   await run(
-    `INSERT OR REPLACE INTO journal_entries (id, tenant_id, company_id, branch_id, fiscal_year_id, fiscal_period_id, sequence_number, daily_number, permanent_number, entry_date_shamsi, entry_date_gregorian, entry_type, status, description, total_debit, total_credit, created_by_user_id, approved_by_user_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO journal_entries (id, tenant_id, company_id, branch_id, fiscal_year_id, fiscal_period_id, sequence_number, daily_number, permanent_number, entry_date_shamsi, entry_date_gregorian, entry_type, status, description, total_debit, total_credit, created_by_user_id, approved_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, fiscal_year_id = EXCLUDED.fiscal_year_id, fiscal_period_id = EXCLUDED.fiscal_period_id, sequence_number = EXCLUDED.sequence_number, daily_number = EXCLUDED.daily_number, permanent_number = EXCLUDED.permanent_number, entry_date_shamsi = EXCLUDED.entry_date_shamsi, entry_date_gregorian = EXCLUDED.entry_date_gregorian, entry_type = EXCLUDED.entry_type, status = EXCLUDED.status, description = EXCLUDED.description, total_debit = EXCLUDED.total_debit, total_credit = EXCLUDED.total_credit, created_by_user_id = EXCLUDED.created_by_user_id, approved_by_user_id = EXCLUDED.approved_by_user_id, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     [
       entry1Id,
       tenantId,
@@ -339,21 +353,18 @@ export async function runSeed() {
   );
 
   await run(
-    `INSERT OR REPLACE INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, floating_dimension_1_id, debit, credit, description)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, floating_dimension_1_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET journal_entry_id = EXCLUDED.journal_entry_id, row_number = EXCLUDED.row_number, subsidiary_account_id = EXCLUDED.subsidiary_account_id, floating_dimension_1_id = EXCLUDED.floating_dimension_1_id, debit = EXCLUDED.debit, credit = EXCLUDED.credit, description = EXCLUDED.description`,
     ['line-1-1', entry1Id, 1, 'sub-1103', 'dim-bank-1', '500000000', '0', 'موجودی اولیه بانک سامان']
   );
   await run(
-    `INSERT OR REPLACE INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, debit, credit, description)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET journal_entry_id = EXCLUDED.journal_entry_id, row_number = EXCLUDED.row_number, subsidiary_account_id = EXCLUDED.subsidiary_account_id, debit = EXCLUDED.debit, credit = EXCLUDED.credit, description = EXCLUDED.description`,
     ['line-1-2', entry1Id, 2, 'sub-5101', '0', '500000000', 'سرمایه اولیه ثبت‌شده سهامداران']
   );
 
   // سند ۲: فروش کالا با کارتخوان و ۱۰٪ ارزش افزوده
   const entry2Id = 'entry-seed-2';
   await run(
-    `INSERT OR REPLACE INTO journal_entries (id, tenant_id, company_id, branch_id, fiscal_year_id, fiscal_period_id, sequence_number, daily_number, permanent_number, entry_date_shamsi, entry_date_gregorian, entry_type, status, description, total_debit, total_credit, created_by_user_id, approved_by_user_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO journal_entries (id, tenant_id, company_id, branch_id, fiscal_year_id, fiscal_period_id, sequence_number, daily_number, permanent_number, entry_date_shamsi, entry_date_gregorian, entry_type, status, description, total_debit, total_credit, created_by_user_id, approved_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, fiscal_year_id = EXCLUDED.fiscal_year_id, fiscal_period_id = EXCLUDED.fiscal_period_id, sequence_number = EXCLUDED.sequence_number, daily_number = EXCLUDED.daily_number, permanent_number = EXCLUDED.permanent_number, entry_date_shamsi = EXCLUDED.entry_date_shamsi, entry_date_gregorian = EXCLUDED.entry_date_gregorian, entry_type = EXCLUDED.entry_type, status = EXCLUDED.status, description = EXCLUDED.description, total_debit = EXCLUDED.total_debit, total_credit = EXCLUDED.total_credit, created_by_user_id = EXCLUDED.created_by_user_id, approved_by_user_id = EXCLUDED.approved_by_user_id, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     [
       entry2Id,
       tenantId,
@@ -379,18 +390,15 @@ export async function runSeed() {
   );
 
   await run(
-    `INSERT OR REPLACE INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, floating_dimension_1_id, debit, credit, description)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, floating_dimension_1_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET journal_entry_id = EXCLUDED.journal_entry_id, row_number = EXCLUDED.row_number, subsidiary_account_id = EXCLUDED.subsidiary_account_id, floating_dimension_1_id = EXCLUDED.floating_dimension_1_id, debit = EXCLUDED.debit, credit = EXCLUDED.credit, description = EXCLUDED.description`,
     ['line-2-1', entry2Id, 1, 'sub-1104', 'dim-pos-1', '110000000', '0', 'واریز وجه فروش به کارتخوان ملت']
   );
   await run(
-    `INSERT OR REPLACE INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, debit, credit, description)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET journal_entry_id = EXCLUDED.journal_entry_id, row_number = EXCLUDED.row_number, subsidiary_account_id = EXCLUDED.subsidiary_account_id, debit = EXCLUDED.debit, credit = EXCLUDED.credit, description = EXCLUDED.description`,
     ['line-2-2', entry2Id, 2, 'sub-6101', '0', '100000000', 'درآمد ناخالص فروش کالا']
   );
   await run(
-    `INSERT OR REPLACE INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, debit, credit, description)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO journal_lines (id, journal_entry_id, row_number, subsidiary_account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET journal_entry_id = EXCLUDED.journal_entry_id, row_number = EXCLUDED.row_number, subsidiary_account_id = EXCLUDED.subsidiary_account_id, debit = EXCLUDED.debit, credit = EXCLUDED.credit, description = EXCLUDED.description`,
     ['line-2-3', entry2Id, 3, 'sub-3306', '0', '10000000', 'مالیات بر ارزش افزوده ۱۰٪ فروش']
   );
 
@@ -405,8 +413,7 @@ export async function runSeed() {
     { permanentNumber: 1, totalDebit: '500000000' }
   );
   await run(
-    `INSERT OR REPLACE INTO audit_logs (id, tenant_id, user_id, action, table_name, record_id, timestamp, previous_hash, current_hash, payload_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit_logs (id, tenant_id, user_id, action, table_name, record_id, timestamp, previous_hash, current_hash, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, user_id = EXCLUDED.user_id, action = EXCLUDED.action, table_name = EXCLUDED.table_name, record_id = EXCLUDED.record_id, timestamp = EXCLUDED.timestamp, previous_hash = EXCLUDED.previous_hash, current_hash = EXCLUDED.current_hash, payload_json = EXCLUDED.payload_json`,
     [
       log1.id,
       log1.tenantId,
@@ -432,8 +439,7 @@ export async function runSeed() {
     log1.currentHash
   );
   await run(
-    `INSERT OR REPLACE INTO audit_logs (id, tenant_id, user_id, action, table_name, record_id, timestamp, previous_hash, current_hash, payload_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit_logs (id, tenant_id, user_id, action, table_name, record_id, timestamp, previous_hash, current_hash, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, user_id = EXCLUDED.user_id, action = EXCLUDED.action, table_name = EXCLUDED.table_name, record_id = EXCLUDED.record_id, timestamp = EXCLUDED.timestamp, previous_hash = EXCLUDED.previous_hash, current_hash = EXCLUDED.current_hash, payload_json = EXCLUDED.payload_json`,
     [
       log2.id,
       log2.tenantId,
@@ -453,8 +459,7 @@ export async function runSeed() {
 
   // اشخاص
   await run(
-    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, first_name, last_name, national_id, mobile, credit_limit, credit_terms_days, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO parties (id, tenant_id, company_id, party_type, name, first_name, last_name, national_id, mobile, credit_limit, credit_terms_days, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, party_type = EXCLUDED.party_type, name = EXCLUDED.name, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, national_id = EXCLUDED.national_id, mobile = EXCLUDED.mobile, credit_limit = EXCLUDED.credit_limit, credit_terms_days = EXCLUDED.credit_terms_days, is_customer = EXCLUDED.is_customer, is_supplier = EXCLUDED.is_supplier, is_employee = EXCLUDED.is_employee, floating_dimension_id = EXCLUDED.floating_dimension_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'party-cust-1',
       tenantId,
@@ -476,8 +481,7 @@ export async function runSeed() {
   );
 
   await run(
-    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, national_id, economic_code, phone, credit_limit, credit_terms_days, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO parties (id, tenant_id, company_id, party_type, name, national_id, economic_code, phone, credit_limit, credit_terms_days, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, party_type = EXCLUDED.party_type, name = EXCLUDED.name, national_id = EXCLUDED.national_id, economic_code = EXCLUDED.economic_code, phone = EXCLUDED.phone, credit_limit = EXCLUDED.credit_limit, credit_terms_days = EXCLUDED.credit_terms_days, is_customer = EXCLUDED.is_customer, is_supplier = EXCLUDED.is_supplier, is_employee = EXCLUDED.is_employee, floating_dimension_id = EXCLUDED.floating_dimension_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'party-cust-2',
       tenantId,
@@ -498,8 +502,7 @@ export async function runSeed() {
   );
 
   await run(
-    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, national_id, phone, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, 1, ?)`,
+    `INSERT INTO parties (id, tenant_id, company_id, party_type, name, national_id, phone, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, false, true, false, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, party_type = EXCLUDED.party_type, name = EXCLUDED.name, national_id = EXCLUDED.national_id, phone = EXCLUDED.phone, is_customer = EXCLUDED.is_customer, is_supplier = EXCLUDED.is_supplier, is_employee = EXCLUDED.is_employee, floating_dimension_id = EXCLUDED.floating_dimension_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'party-supp-1',
       tenantId,
@@ -515,8 +518,7 @@ export async function runSeed() {
 
   // حساب‌های بانکی
   await run(
-    `INSERT OR REPLACE INTO bank_accounts (id, tenant_id, company_id, bank_name, branch_name, account_number, iban, card_number, floating_dimension_id, initial_balance, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO bank_accounts (id, tenant_id, company_id, bank_name, branch_name, account_number, iban, card_number, floating_dimension_id, initial_balance, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, bank_name = EXCLUDED.bank_name, branch_name = EXCLUDED.branch_name, account_number = EXCLUDED.account_number, iban = EXCLUDED.iban, card_number = EXCLUDED.card_number, floating_dimension_id = EXCLUDED.floating_dimension_id, initial_balance = EXCLUDED.initial_balance, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'bank-saman-1',
       tenantId,
@@ -534,8 +536,7 @@ export async function runSeed() {
 
   // صندوق نقدی
   await run(
-    `INSERT OR REPLACE INTO cash_desks (id, tenant_id, company_id, branch_id, code, title, floating_dimension_id, initial_balance, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO cash_desks (id, tenant_id, company_id, branch_id, code, title, floating_dimension_id, initial_balance, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, code = EXCLUDED.code, title = EXCLUDED.title, floating_dimension_id = EXCLUDED.floating_dimension_id, initial_balance = EXCLUDED.initial_balance, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'cash-desk-1',
       tenantId,
@@ -551,8 +552,7 @@ export async function runSeed() {
 
   // تنخواه‌گردان
   await run(
-    `INSERT OR REPLACE INTO petty_cash_funds (id, tenant_id, company_id, branch_id, code, title, custodian_party_id, ceiling_amount, floating_dimension_id, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO petty_cash_funds (id, tenant_id, company_id, branch_id, code, title, custodian_party_id, ceiling_amount, floating_dimension_id, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, code = EXCLUDED.code, title = EXCLUDED.title, custodian_party_id = EXCLUDED.custodian_party_id, ceiling_amount = EXCLUDED.ceiling_amount, floating_dimension_id = EXCLUDED.floating_dimension_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'petty-1',
       tenantId,
@@ -574,39 +574,33 @@ export async function runSeed() {
   // ==========================================
   // دسته‌بندی کالاها
   await run(
-    `INSERT OR REPLACE INTO product_categories (id, tenant_id, company_id, code, title, parent_id, created_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+    `INSERT INTO product_categories (id, tenant_id, company_id, code, title, parent_id, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, title = EXCLUDED.title, parent_id = EXCLUDED.parent_id, created_at = EXCLUDED.created_at`,
     ['cat-digital', tenantId, companyId, 'CAT-01', 'کالاهای دیجیتال و تجهیزات الکترونیک', now]
   );
   await run(
-    `INSERT OR REPLACE INTO product_categories (id, tenant_id, company_id, code, title, parent_id, created_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+    `INSERT INTO product_categories (id, tenant_id, company_id, code, title, parent_id, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, title = EXCLUDED.title, parent_id = EXCLUDED.parent_id, created_at = EXCLUDED.created_at`,
     ['cat-services', tenantId, companyId, 'CAT-02', 'خدمات فنی، مهندسی و مالی', now]
   );
 
   // واحدهای سنجش کالا
   await run(
-    `INSERT OR REPLACE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at) VALUES (?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, title = EXCLUDED.title, symbol = EXCLUDED.symbol, is_reference = EXCLUDED.is_reference, created_at = EXCLUDED.created_at`,
     ['unit-piece', tenantId, companyId, 'PCS', 'دستگاه / عدد', 'عدد', now]
   );
   await run(
-    `INSERT OR REPLACE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+    `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at) VALUES (?, ?, ?, ?, ?, ?, false, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, title = EXCLUDED.title, symbol = EXCLUDED.symbol, is_reference = EXCLUDED.is_reference, created_at = EXCLUDED.created_at`,
     ['unit-box', tenantId, companyId, 'BOX', 'کارتن (بسته ۱۰ تایی)', 'کارتن', now]
   );
 
   // ضریب تبدیل واحد (هر کارتن = ۱۰ عدد)
   await run(
-    `INSERT OR REPLACE INTO unit_conversions (id, tenant_id, from_unit_id, to_unit_id, conversion_rate, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO unit_conversions (id, tenant_id, from_unit_id, to_unit_id, conversion_rate, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, from_unit_id = EXCLUDED.from_unit_id, to_unit_id = EXCLUDED.to_unit_id, conversion_rate = EXCLUDED.conversion_rate, created_at = EXCLUDED.created_at`,
     ['conv-box-to-piece', tenantId, 'unit-box', 'unit-piece', '10', now]
   );
 
   // انبارها
   await run(
-    `INSERT OR REPLACE INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, code = EXCLUDED.code, name = EXCLUDED.name, address = EXCLUDED.address, phone = EXCLUDED.phone, keeper_name = EXCLUDED.keeper_name, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'wh-main',
       tenantId,
@@ -621,8 +615,7 @@ export async function runSeed() {
     ]
   );
   await run(
-    `INSERT OR REPLACE INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, code = EXCLUDED.code, name = EXCLUDED.name, address = EXCLUDED.address, phone = EXCLUDED.phone, keeper_name = EXCLUDED.keeper_name, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'wh-retail',
       tenantId,
@@ -640,11 +633,11 @@ export async function runSeed() {
   // کالاها و خدمات
   // ۱. کالای فیزیکی با روش میانگین موزون متحرک (MOVING_AVERAGE)
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '0.10', 'MOVING_AVERAGE', '5', '100', '350000000', '280000000', 1, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false, '0.10', 'MOVING_AVERAGE', '5', '100', '350000000', '280000000', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'prod-laptop',
       tenantId,
@@ -661,11 +654,11 @@ export async function runSeed() {
 
   // ۲. کالای فیزیکی جانبی با روش میانگین
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '0.10', 'MOVING_AVERAGE', '10', '500', '15000000', '10000000', 1, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false, '0.10', 'MOVING_AVERAGE', '10', '500', '15000000', '10000000', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'prod-mouse',
       tenantId,
@@ -682,11 +675,11 @@ export async function runSeed() {
 
   // ۳. کالای فیزیکی با روش FIFO
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '0.10', 'FIFO', '5', '50', '180000000', '140000000', 1, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false, '0.10', 'FIFO', '5', '50', '180000000', '140000000', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'prod-tablet',
       tenantId,
@@ -703,11 +696,11 @@ export async function runSeed() {
 
   // ۴. خدمات غیرفیزیکی (فاقد کاردکس انبار)
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, '0.10', 'MOVING_AVERAGE', '0', '0', '50000000', '0', 1, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, false, '0.10', 'MOVING_AVERAGE', '0', '0', '50000000', '0', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'prod-consulting',
       tenantId,
@@ -728,11 +721,11 @@ export async function runSeed() {
   // ==========================================
   const moadianKeys = MoadianCryptoEngine.generateKeyPair();
   await run(
-    `INSERT OR REPLACE INTO moadian_settings (
+    `INSERT INTO moadian_settings (
       id, tenant_id, company_id, fiscal_memory_id, transport_method,
       private_key_pem, public_key_pem, public_key_base64,
       tsp_provider_name, tsp_api_key, is_sandbox_mode, is_active, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, 'DIRECT', ?, ?, ?, NULL, NULL, 1, 1, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, 'DIRECT', ?, ?, ?, NULL, NULL, true, true, ?, ?) ON CONFLICT (company_id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, fiscal_memory_id = EXCLUDED.fiscal_memory_id, transport_method = EXCLUDED.transport_method, private_key_pem = EXCLUDED.private_key_pem, public_key_pem = EXCLUDED.public_key_pem, public_key_base64 = EXCLUDED.public_key_base64, tsp_provider_name = EXCLUDED.tsp_provider_name, tsp_api_key = EXCLUDED.tsp_api_key, is_sandbox_mode = EXCLUDED.is_sandbox_mode, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     [
       'moadian-set-1',
       tenantId,
@@ -748,13 +741,11 @@ export async function runSeed() {
 
   // نگاشت واحدهای سنجش به کدهای ۴ رقمی سامانه مودیان
   await run(
-    `INSERT OR REPLACE INTO moadian_unit_mappings (id, tenant_id, unit_id, moadian_unit_code, moadian_unit_title, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO moadian_unit_mappings (id, tenant_id, unit_id, moadian_unit_code, moadian_unit_title, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, unit_id = EXCLUDED.unit_id, moadian_unit_code = EXCLUDED.moadian_unit_code, moadian_unit_title = EXCLUDED.moadian_unit_title, created_at = EXCLUDED.created_at`,
     ['map-unit-1', tenantId, 'unit-piece', '1640', 'تعداد / عدد / دستگاه', now]
   );
   await run(
-    `INSERT OR REPLACE INTO moadian_unit_mappings (id, tenant_id, unit_id, moadian_unit_code, moadian_unit_title, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO moadian_unit_mappings (id, tenant_id, unit_id, moadian_unit_code, moadian_unit_title, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, unit_id = EXCLUDED.unit_id, moadian_unit_code = EXCLUDED.moadian_unit_code, moadian_unit_title = EXCLUDED.moadian_unit_title, created_at = EXCLUDED.created_at`,
     ['map-unit-2', tenantId, 'unit-box', '1641', 'بسته / کارتن', now]
   );
 
@@ -764,10 +755,10 @@ export async function runSeed() {
   // فاز ۵: پایانه کارتخوان POS و صندوق فروشگاهی
   // ==========================================
   await run(
-    `INSERT OR REPLACE INTO pos_terminals (
+    `INSERT INTO pos_terminals (
       id, tenant_id, company_id, branch_id, code, title, terminal_number,
       serial_number, psp_name, bank_account_id, floating_dimension_id, is_active, created_at
-    ) VALUES (?, ?, ?, ?, 'POS01', 'کارتخوان متصل به صندوق ونک', '89211045', 'SN-SAMAN-991', 'سامان‌کیش', 'bank-saman-1', 'dim-pos-1', 1, ?)`,
+    ) VALUES (?, ?, ?, ?, 'POS01', 'کارتخوان متصل به صندوق ونک', '89211045', 'SN-SAMAN-991', 'سامان‌کیش', 'bank-saman-1', 'dim-pos-1', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, code = EXCLUDED.code, title = EXCLUDED.title, terminal_number = EXCLUDED.terminal_number, serial_number = EXCLUDED.serial_number, psp_name = EXCLUDED.psp_name, bank_account_id = EXCLUDED.bank_account_id, floating_dimension_id = EXCLUDED.floating_dimension_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'pos-term-1',
       tenantId,
@@ -779,11 +770,11 @@ export async function runSeed() {
 
   // کالای وزنی ترازویی
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, ?, 'unit-piece', '00105', 'گوشت ران گوساله ممتاز (وزنی)', 'GOODS', '2100105000000', 1, '0.00', 'MOVING_AVERAGE', '10', '200', '2400000', '1800000', 1, ?)`,
+    ) VALUES (?, ?, ?, ?, 'unit-piece', '00105', 'گوشت ران گوساله ممتاز (وزنی)', 'GOODS', '2100105000000', true, '0.00', 'MOVING_AVERAGE', '10', '200', '2400000', '1800000', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     [
       'prod-meat',
       tenantId,
@@ -795,7 +786,7 @@ export async function runSeed() {
 
   // موجودی اولیه گوشت در انبار اصلی برای تست ترازو
   await run(
-    `INSERT OR REPLACE INTO stock_ledger_entries (
+    `INSERT INTO stock_ledger_entries (
       id, tenant_id, company_id, warehouse_id, product_id, variant_id,
       document_type, document_id, document_number, date_shamsi,
       in_quantity, in_unit_cost, in_total_cost,
@@ -809,7 +800,7 @@ export async function runSeed() {
       '0', '0', '0',
       '100', '1800000', '180000000',
       ?
-    )`,
+    ) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, warehouse_id = EXCLUDED.warehouse_id, product_id = EXCLUDED.product_id, variant_id = EXCLUDED.variant_id, document_type = EXCLUDED.document_type, document_id = EXCLUDED.document_id, document_number = EXCLUDED.document_number, date_shamsi = EXCLUDED.date_shamsi, in_quantity = EXCLUDED.in_quantity, in_unit_cost = EXCLUDED.in_unit_cost, in_total_cost = EXCLUDED.in_total_cost, out_quantity = EXCLUDED.out_quantity, out_unit_cost = EXCLUDED.out_unit_cost, out_total_cost = EXCLUDED.out_total_cost, balance_quantity = EXCLUDED.balance_quantity, balance_unit_cost = EXCLUDED.balance_unit_cost, balance_total_cost = EXCLUDED.balance_total_cost, created_at = EXCLUDED.created_at`,
     [tenantId, companyId, now]
   );
 
@@ -822,42 +813,35 @@ export async function runSeed() {
 
   // ۱. بخش‌های سالن رستوران
   await run(
-    `INSERT OR REPLACE INTO restaurant_sections (id, tenant_id, company_id, branch_id, code, title, description, created_at)
-     VALUES (?, ?, ?, ?, 'SEC-MAIN', 'سالن مرکزی ونک', 'سالن اصلی با ظرفیت ۶۰ نفر و موسیقی ملایم', ?)`,
+    `INSERT INTO restaurant_sections (id, tenant_id, company_id, branch_id, code, title, description, created_at) VALUES (?, ?, ?, ?, 'SEC-MAIN', 'سالن مرکزی ونک', 'سالن اصلی با ظرفیت ۶۰ نفر و موسیقی ملایم', ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, code = EXCLUDED.code, title = EXCLUDED.title, description = EXCLUDED.description, created_at = EXCLUDED.created_at`,
     ['sec-main', tenantId, companyId, branchId, now]
   );
   await run(
-    `INSERT OR REPLACE INTO restaurant_sections (id, tenant_id, company_id, branch_id, code, title, description, created_at)
-     VALUES (?, ?, ?, ?, 'SEC-VIP', 'بخش اختصاصی VIP', 'سالن جلسات تجاری و مراسم خصوصی', ?)`,
+    `INSERT INTO restaurant_sections (id, tenant_id, company_id, branch_id, code, title, description, created_at) VALUES (?, ?, ?, ?, 'SEC-VIP', 'بخش اختصاصی VIP', 'سالن جلسات تجاری و مراسم خصوصی', ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, code = EXCLUDED.code, title = EXCLUDED.title, description = EXCLUDED.description, created_at = EXCLUDED.created_at`,
     ['sec-vip', tenantId, companyId, branchId, now]
   );
 
   // ۲. میزهای سالن
   await run(
-    `INSERT OR REPLACE INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'sec-main', 'T01', 'میز شماره ۱ (کنار پنجره)', 4, 'VACANT', 1, ?, ?)`,
+    `INSERT INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 'sec-main', 'T01', 'میز شماره ۱ (کنار پنجره)', 4, 'VACANT', true, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, section_id = EXCLUDED.section_id, table_number = EXCLUDED.table_number, title = EXCLUDED.title, capacity = EXCLUDED.capacity, status = EXCLUDED.status, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     ['tbl-01', tenantId, companyId, branchId, now, now]
   );
   await run(
-    `INSERT OR REPLACE INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'sec-main', 'T02', 'میز شماره ۲ (دونفره دنج)', 2, 'VACANT', 1, ?, ?)`,
+    `INSERT INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 'sec-main', 'T02', 'میز شماره ۲ (دونفره دنج)', 2, 'VACANT', true, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, section_id = EXCLUDED.section_id, table_number = EXCLUDED.table_number, title = EXCLUDED.title, capacity = EXCLUDED.capacity, status = EXCLUDED.status, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     ['tbl-02', tenantId, companyId, branchId, now, now]
   );
   await run(
-    `INSERT OR REPLACE INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'sec-vip', 'VIP01', 'میز بزرگ VIP و اتاق کنفرانس', 8, 'VACANT', 1, ?, ?)`,
+    `INSERT INTO restaurant_tables (id, tenant_id, company_id, branch_id, section_id, table_number, title, capacity, status, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 'sec-vip', 'VIP01', 'میز بزرگ VIP و اتاق کنفرانس', 8, 'VACANT', true, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, section_id = EXCLUDED.section_id, table_number = EXCLUDED.table_number, title = EXCLUDED.title, capacity = EXCLUDED.capacity, status = EXCLUDED.status, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     ['tbl-vip', tenantId, companyId, branchId, now, now]
   );
 
   // ۳. دسته‌بندی منوی رستوران
   await run(
-    `INSERT OR REPLACE INTO restaurant_menu_categories (id, tenant_id, company_id, code, title, icon, display_order, kitchen_station, is_active, created_at)
-     VALUES (?, ?, ?, 'MCAT-PIZZA', 'پیتزا و گریل تخصصی', 'pizza', 1, 'HOT_KITCHEN', 1, ?)`,
+    `INSERT INTO restaurant_menu_categories (id, tenant_id, company_id, code, title, icon, display_order, kitchen_station, is_active, created_at) VALUES (?, ?, ?, 'MCAT-PIZZA', 'پیتزا و گریل تخصصی', 'pizza', 1, 'HOT_KITCHEN', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, title = EXCLUDED.title, icon = EXCLUDED.icon, display_order = EXCLUDED.display_order, kitchen_station = EXCLUDED.kitchen_station, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     ['mcat-pizza', tenantId, companyId, now]
   );
   await run(
-    `INSERT OR REPLACE INTO restaurant_menu_categories (id, tenant_id, company_id, code, title, icon, display_order, kitchen_station, is_active, created_at)
-     VALUES (?, ?, ?, 'MCAT-COFFEE', 'بار تخصصی قهوه و بارتندری', 'coffee', 2, 'BAR_CAFE', 1, ?)`,
+    `INSERT INTO restaurant_menu_categories (id, tenant_id, company_id, code, title, icon, display_order, kitchen_station, is_active, created_at) VALUES (?, ?, ?, 'MCAT-COFFEE', 'بار تخصصی قهوه و بارتندری', 'coffee', 2, 'BAR_CAFE', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, title = EXCLUDED.title, icon = EXCLUDED.icon, display_order = EXCLUDED.display_order, kitchen_station = EXCLUDED.kitchen_station, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     ['mcat-coffee', tenantId, companyId, now]
   );
 
@@ -872,17 +856,17 @@ export async function runSeed() {
 
   for (const rp of rawProducts) {
     await run(
-      `INSERT OR REPLACE INTO products (
+      `INSERT INTO products (
         id, tenant_id, company_id, category_id, unit_id, code, name, type,
         barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
         sell_price, purchase_price, is_active, created_at
-      ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', ?, ?, 'GOODS', NULL, 1, '0.00', 'MOVING_AVERAGE', '5', '200', '0', ?, 1, ?)`,
+      ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', ?, ?, 'GOODS', NULL, true, '0.00', 'MOVING_AVERAGE', '5', '200', '0', ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [rp.id, tenantId, companyId, rp.code, rp.name, rp.price, now]
     );
 
     // ثبت موجودی اولیه کاردکس مواد در انبار مرکزی
     await run(
-      `INSERT OR REPLACE INTO stock_ledger_entries (
+      `INSERT INTO stock_ledger_entries (
         id, tenant_id, company_id, warehouse_id, product_id, variant_id,
         document_type, document_id, document_number, date_shamsi,
         in_quantity, in_unit_cost, in_total_cost,
@@ -896,7 +880,7 @@ export async function runSeed() {
         '0', '0', '0',
         '100', ?, ?,
         ?
-      )`,
+      ) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, warehouse_id = EXCLUDED.warehouse_id, product_id = EXCLUDED.product_id, variant_id = EXCLUDED.variant_id, document_type = EXCLUDED.document_type, document_id = EXCLUDED.document_id, document_number = EXCLUDED.document_number, date_shamsi = EXCLUDED.date_shamsi, in_quantity = EXCLUDED.in_quantity, in_unit_cost = EXCLUDED.in_unit_cost, in_total_cost = EXCLUDED.in_total_cost, out_quantity = EXCLUDED.out_quantity, out_unit_cost = EXCLUDED.out_unit_cost, out_total_cost = EXCLUDED.out_total_cost, balance_quantity = EXCLUDED.balance_quantity, balance_unit_cost = EXCLUDED.balance_unit_cost, balance_total_cost = EXCLUDED.balance_total_cost, created_at = EXCLUDED.created_at`,
       [
         `stk-init-${rp.id}`,
         tenantId,
@@ -913,26 +897,25 @@ export async function runSeed() {
 
   // ۵. غذاهای نهایی منو
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'MENU-101', 'پیتزا پپرونی ایتالیایی ۳۲ سانتی', 'GOODS', '2800101000000', 0, '0.10', 'MOVING_AVERAGE', '0', '0', '1800000', '493400', 1, ?)`,
+    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'MENU-101', 'پیتزا پپرونی ایتالیایی ۳۲ سانتی', 'GOODS', '2800101000000', false, '0.10', 'MOVING_AVERAGE', '0', '0', '1800000', '493400', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     ['prod-pizza-pep', tenantId, companyId, now]
   );
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'MENU-102', 'قهوه اسپرسو دبل شات ۱۰۰٪ عربیکا', 'GOODS', '2800102000000', 0, '0.10', 'MOVING_AVERAGE', '0', '0', '450000', '75600', 1, ?)`,
+    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'MENU-102', 'قهوه اسپرسو دبل شات ۱۰۰٪ عربیکا', 'GOODS', '2800102000000', false, '0.10', 'MOVING_AVERAGE', '0', '0', '450000', '75600', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     ['prod-espresso', tenantId, companyId, now]
   );
 
   // ۶. دستور پخت (BOM) پیتزا پپرونی
   await run(
-    `INSERT OR REPLACE INTO restaurant_recipes (id, tenant_id, company_id, menu_product_id, yield_quantity, notes, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, 'prod-pizza-pep', '1', 'دستور پخت استاندارد پیتزا پپرونی با تخمیر ۴۸ ساعته', 1, ?, ?)`,
+    `INSERT INTO restaurant_recipes (id, tenant_id, company_id, menu_product_id, yield_quantity, notes, is_active, created_at, updated_at) VALUES (?, ?, ?, 'prod-pizza-pep', '1', 'دستور پخت استاندارد پیتزا پپرونی با تخمیر ۴۸ ساعته', true, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, menu_product_id = EXCLUDED.menu_product_id, yield_quantity = EXCLUDED.yield_quantity, notes = EXCLUDED.notes, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     ['rec-pizza-pep', tenantId, companyId, now, now]
   );
 
@@ -944,28 +927,24 @@ export async function runSeed() {
   ];
   for (const it of pizzaIngredients) {
     await run(
-      `INSERT OR REPLACE INTO restaurant_recipe_items (id, recipe_id, raw_product_id, quantity, waste_percentage, created_at)
-       VALUES (?, 'rec-pizza-pep', ?, ?, ?, ?)`,
+      `INSERT INTO restaurant_recipe_items (id, recipe_id, raw_product_id, quantity, waste_percentage, created_at) VALUES (?, 'rec-pizza-pep', ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET recipe_id = EXCLUDED.recipe_id, raw_product_id = EXCLUDED.raw_product_id, quantity = EXCLUDED.quantity, waste_percentage = EXCLUDED.waste_percentage, created_at = EXCLUDED.created_at`,
       [it.id, it.rawId, it.qty, it.waste, now]
     );
   }
 
   // دستور پخت قهوه اسپرسو دبل
   await run(
-    `INSERT OR REPLACE INTO restaurant_recipes (id, tenant_id, company_id, menu_product_id, yield_quantity, notes, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, 'prod-espresso', '1', 'اسپرسو دبل شات استاندارد ۱۸ گرم سابه قهوه', 1, ?, ?)`,
+    `INSERT INTO restaurant_recipes (id, tenant_id, company_id, menu_product_id, yield_quantity, notes, is_active, created_at, updated_at) VALUES (?, ?, ?, 'prod-espresso', '1', 'اسپرسو دبل شات استاندارد ۱۸ گرم سابه قهوه', true, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, menu_product_id = EXCLUDED.menu_product_id, yield_quantity = EXCLUDED.yield_quantity, notes = EXCLUDED.notes, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     ['rec-espresso', tenantId, companyId, now, now]
   );
   await run(
-    `INSERT OR REPLACE INTO restaurant_recipe_items (id, recipe_id, raw_product_id, quantity, waste_percentage, created_at)
-     VALUES (?, 'rec-espresso', 'raw-coffee', '0.018', '5', ?)`,
+    `INSERT INTO restaurant_recipe_items (id, recipe_id, raw_product_id, quantity, waste_percentage, created_at) VALUES (?, 'rec-espresso', 'raw-coffee', '0.018', '5', ?) ON CONFLICT (id) DO UPDATE SET recipe_id = EXCLUDED.recipe_id, raw_product_id = EXCLUDED.raw_product_id, quantity = EXCLUDED.quantity, waste_percentage = EXCLUDED.waste_percentage, created_at = EXCLUDED.created_at`,
     ['ri-esp-01', now]
   );
 
   // ۷. ثبت شخص پیک دلیوری
   await run(
-    `INSERT OR REPLACE INTO parties (id, tenant_id, company_id, party_type, name, first_name, last_name, mobile, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at)
-     VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', 'آقای رضا مرادی (پیک دلیوری)', 'رضا', 'مرادی', '09123334455', 0, 0, 1, 'dim-cust-1', 1, ?)`,
+    `INSERT INTO parties (id, tenant_id, company_id, party_type, name, first_name, last_name, mobile, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at) VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', 'آقای رضا مرادی (پیک دلیوری)', 'رضا', 'مرادی', '09123334455', false, false, true, 'dim-cust-1', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, party_type = EXCLUDED.party_type, name = EXCLUDED.name, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, mobile = EXCLUDED.mobile, is_customer = EXCLUDED.is_customer, is_supplier = EXCLUDED.is_supplier, is_employee = EXCLUDED.is_employee, floating_dimension_id = EXCLUDED.floating_dimension_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     ['party-courier-1', tenantId, companyId, now]
   );
 
@@ -996,10 +975,10 @@ export async function runSeed() {
 
   for (const wc of workCenters) {
     await run(
-      `INSERT OR REPLACE INTO manufacturing_work_centers (
+      `INSERT INTO manufacturing_work_centers (
         id, tenant_id, company_id, code, name, department,
         capacity_hours_per_day, labor_hourly_rate, overhead_hourly_rate, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, '8', ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, '8', ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, code = EXCLUDED.code, name = EXCLUDED.name, department = EXCLUDED.department, capacity_hours_per_day = EXCLUDED.capacity_hours_per_day, labor_hourly_rate = EXCLUDED.labor_hourly_rate, overhead_hourly_rate = EXCLUDED.overhead_hourly_rate, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [wc.id, tenantId, companyId, wc.code, wc.name, wc.department, wc.laborRate, wc.overheadRate, now]
     );
   }
@@ -1015,17 +994,17 @@ export async function runSeed() {
 
   for (const comp of mfgComponents) {
     await run(
-      `INSERT OR REPLACE INTO products (
+      `INSERT INTO products (
         id, tenant_id, company_id, category_id, unit_id, code, name, type,
         barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
         sell_price, purchase_price, is_active, created_at
-      ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', ?, ?, 'GOODS', NULL, 0, '0.10', 'MOVING_AVERAGE', '10', '1000', '0', ?, 1, ?)`,
+      ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', ?, ?, 'GOODS', NULL, false, '0.10', 'MOVING_AVERAGE', '10', '1000', '0', ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [comp.id, tenantId, companyId, comp.code, comp.name, comp.cost, now]
     );
 
     // موجودی ۵۰۰ عددی قطعات اولیه در انبار مواد wh-main
     await run(
-      `INSERT OR REPLACE INTO stock_ledger_entries (
+      `INSERT INTO stock_ledger_entries (
         id, tenant_id, company_id, warehouse_id, product_id, variant_id,
         document_type, document_id, document_number, date_shamsi,
         in_quantity, in_unit_cost, in_total_cost,
@@ -1039,7 +1018,7 @@ export async function runSeed() {
         '0', '0', '0',
         '500', ?, ?,
         ?
-      )`,
+      ) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, warehouse_id = EXCLUDED.warehouse_id, product_id = EXCLUDED.product_id, variant_id = EXCLUDED.variant_id, document_type = EXCLUDED.document_type, document_id = EXCLUDED.document_id, document_number = EXCLUDED.document_number, date_shamsi = EXCLUDED.date_shamsi, in_quantity = EXCLUDED.in_quantity, in_unit_cost = EXCLUDED.in_unit_cost, in_total_cost = EXCLUDED.in_total_cost, out_quantity = EXCLUDED.out_quantity, out_unit_cost = EXCLUDED.out_unit_cost, out_total_cost = EXCLUDED.out_total_cost, balance_quantity = EXCLUDED.balance_quantity, balance_unit_cost = EXCLUDED.balance_unit_cost, balance_total_cost = EXCLUDED.balance_total_cost, created_at = EXCLUDED.created_at`,
       [
         `stk-init-${comp.id}`,
         tenantId,
@@ -1056,28 +1035,28 @@ export async function runSeed() {
 
   // ۳. محصول نهایی تولیدی: پوز اندرویدی پیشرو مدل X-900
   await run(
-    `INSERT OR REPLACE INTO products (
+    `INSERT INTO products (
       id, tenant_id, company_id, category_id, unit_id, code, name, type,
       barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
       sell_price, purchase_price, is_active, created_at
-    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'PROD-POS-X900', 'کارتخوان هوشمند لمسی پیشرو مدل X-900', 'GOODS', '6260000009001', 0, '0.10', 'MOVING_AVERAGE', '5', '500', '55000000', '37890000', 1, ?)`,
+    ) VALUES (?, ?, ?, 'cat-digital', 'unit-piece', 'PROD-POS-X900', 'کارتخوان هوشمند لمسی پیشرو مدل X-900', 'GOODS', '6260000009001', false, '0.10', 'MOVING_AVERAGE', '5', '500', '55000000', '37890000', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, category_id = EXCLUDED.category_id, unit_id = EXCLUDED.unit_id, code = EXCLUDED.code, name = EXCLUDED.name, type = EXCLUDED.type, barcode = EXCLUDED.barcode, tax_exempt = EXCLUDED.tax_exempt, vat_rate = EXCLUDED.vat_rate, valuation_method = EXCLUDED.valuation_method, min_stock_alert = EXCLUDED.min_stock_alert, max_stock_alert = EXCLUDED.max_stock_alert, sell_price = EXCLUDED.sell_price, purchase_price = EXCLUDED.purchase_price, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
     ['prod-smart-pos', tenantId, companyId, now]
   );
 
   // ۴. فرمول ساخت (BOM) استاندارد
   await run(
-    `INSERT OR REPLACE INTO manufacturing_boms (
+    `INSERT INTO manufacturing_boms (
       id, tenant_id, company_id, product_id, bom_code, bom_name, version,
       base_quantity, is_default, is_active,
       standard_material_cost, standard_labor_cost, standard_overhead_cost, standard_total_cost,
       description, created_at, updated_at
     ) VALUES (
       'bom-smart-pos-v1', ?, ?, 'prod-smart-pos', 'BOM-POS-X900-V1', 'فرمول ساخت استاندارد کارتخوان لمسی X-900', '1.0',
-      '1', 1, 1,
+      '1', true, true,
       '35140000', '1750000', '1000000', '37890000',
       'فرمول استاندارد کارخانه‌ای شامل قطعات، مونتاژ، تست نهایی و ضایعات عادی',
       ?, ?
-    )`,
+    ) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, product_id = EXCLUDED.product_id, bom_code = EXCLUDED.bom_code, bom_name = EXCLUDED.bom_name, version = EXCLUDED.version, base_quantity = EXCLUDED.base_quantity, is_default = EXCLUDED.is_default, is_active = EXCLUDED.is_active, standard_material_cost = EXCLUDED.standard_material_cost, standard_labor_cost = EXCLUDED.standard_labor_cost, standard_overhead_cost = EXCLUDED.standard_overhead_cost, standard_total_cost = EXCLUDED.standard_total_cost, description = EXCLUDED.description, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     [tenantId, companyId, now, now]
   );
 
@@ -1091,32 +1070,32 @@ export async function runSeed() {
   ];
   for (const item of bomItems) {
     await run(
-      `INSERT OR REPLACE INTO manufacturing_bom_items (
+      `INSERT INTO manufacturing_bom_items (
         id, bom_id, component_product_id, quantity, scrap_percentage, is_sub_assembly, line_order, created_at
-      ) VALUES (?, 'bom-smart-pos-v1', ?, ?, ?, 0, 1, ?)`,
+      ) VALUES (?, 'bom-smart-pos-v1', ?, ?, ?, false, 1, ?) ON CONFLICT (id) DO UPDATE SET bom_id = EXCLUDED.bom_id, component_product_id = EXCLUDED.component_product_id, quantity = EXCLUDED.quantity, scrap_percentage = EXCLUDED.scrap_percentage, is_sub_assembly = EXCLUDED.is_sub_assembly, line_order = EXCLUDED.line_order, created_at = EXCLUDED.created_at`,
       [item.id, item.compId, item.qty, item.scrap, now]
     );
   }
 
   // ۶. مراحل روتینگ و ایستگاه‌های عملیات
   await run(
-    `INSERT OR REPLACE INTO manufacturing_routings (
+    `INSERT INTO manufacturing_routings (
       id, bom_id, work_center_id, step_number, operation_name,
       setup_time_hours, run_time_hours_per_unit, labor_hours_per_unit, machine_hours_per_unit, created_at
     ) VALUES (
       'route-01', 'bom-smart-pos-v1', 'wc-assembly', 1, 'مونتاژ برد، ماژول‌ها و اتصالات سخت‌افزاری',
       '0.1', '0.5', '0.5', '0.5', ?
-    )`,
+    ) ON CONFLICT (id) DO UPDATE SET bom_id = EXCLUDED.bom_id, work_center_id = EXCLUDED.work_center_id, step_number = EXCLUDED.step_number, operation_name = EXCLUDED.operation_name, setup_time_hours = EXCLUDED.setup_time_hours, run_time_hours_per_unit = EXCLUDED.run_time_hours_per_unit, labor_hours_per_unit = EXCLUDED.labor_hours_per_unit, machine_hours_per_unit = EXCLUDED.machine_hours_per_unit, created_at = EXCLUDED.created_at`,
     [now]
   );
   await run(
-    `INSERT OR REPLACE INTO manufacturing_routings (
+    `INSERT INTO manufacturing_routings (
       id, bom_id, work_center_id, step_number, operation_name,
       setup_time_hours, run_time_hours_per_unit, labor_hours_per_unit, machine_hours_per_unit, created_at
     ) VALUES (
       'route-02', 'bom-smart-pos-v1', 'wc-qc-packaging', 2, 'تست کنترل کیفیت سخت‌افزار، کالیبراسیون و بسته‌بندی',
       '0.05', '0.25', '0.25', '0.25', ?
-    )`,
+    ) ON CONFLICT (id) DO UPDATE SET bom_id = EXCLUDED.bom_id, work_center_id = EXCLUDED.work_center_id, step_number = EXCLUDED.step_number, operation_name = EXCLUDED.operation_name, setup_time_hours = EXCLUDED.setup_time_hours, run_time_hours_per_unit = EXCLUDED.run_time_hours_per_unit, labor_hours_per_unit = EXCLUDED.labor_hours_per_unit, machine_hours_per_unit = EXCLUDED.machine_hours_per_unit, created_at = EXCLUDED.created_at`,
     [now]
   );
 
@@ -1174,16 +1153,40 @@ export async function runSeed() {
       seniority: '0',
       childCount: 0,
       childAllowance: '0'
+    },
+    {
+      partyId: 'party-rezaei-1',
+      empId: 'emp-rezaei-1',
+      code: 'EMP-104',
+      nationalId: '0034567890',
+      firstName: 'علی',
+      lastName: 'رضایی',
+      fatherName: 'حسین',
+      birthDate: '1365/01/01',
+      hireDate: '1400/01/01',
+      insuranceNumber: '99887766',
+      bankName: 'بانک ملی',
+      bankAccount: '1122334455',
+      sheba: 'IR120170000000001122334455',
+      dept: 'اداری',
+      jobTitle: 'مسئول خرید و تنخواه گردان',
+      contractId: 'cnt-03',
+      baseSalary: '140000000',
+      housing: '9000000',
+      grocery: '14000000',
+      seniority: '5000000',
+      childCount: 1,
+      childAllowance: '7166184'
     }
   ];
 
   for (const emp of employeesData) {
     // ثبت تفصیلی پرسنل در جدول اشخاص
     await run(
-      `INSERT OR REPLACE INTO parties (
+      `INSERT INTO parties (
         id, tenant_id, company_id, party_type, name, first_name, last_name,
         national_id, mobile, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at
-      ) VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', ?, ?, ?, ?, '09121112233', 0, 0, 1, 'dim-cust-1', 1, ?)`,
+      ) VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', ?, ?, ?, ?, '09121112233', false, false, true, 'dim-cust-1', true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, party_type = EXCLUDED.party_type, name = EXCLUDED.name, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, national_id = EXCLUDED.national_id, mobile = EXCLUDED.mobile, is_customer = EXCLUDED.is_customer, is_supplier = EXCLUDED.is_supplier, is_employee = EXCLUDED.is_employee, floating_dimension_id = EXCLUDED.floating_dimension_id, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [
         emp.partyId,
         tenantId,
@@ -1198,12 +1201,12 @@ export async function runSeed() {
 
     // ثبت پرونده پرسنل
     await run(
-      `INSERT OR REPLACE INTO payroll_employees (
+      `INSERT INTO payroll_employees (
         id, tenant_id, company_id, party_id, personnel_code, national_id,
         first_name, last_name, father_name, birth_date_shamsi, hire_date_shamsi,
         insurance_number, bank_name, bank_account_number, bank_sheba_number,
         department, job_title, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, party_id = EXCLUDED.party_id, personnel_code = EXCLUDED.personnel_code, national_id = EXCLUDED.national_id, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, father_name = EXCLUDED.father_name, birth_date_shamsi = EXCLUDED.birth_date_shamsi, hire_date_shamsi = EXCLUDED.hire_date_shamsi, insurance_number = EXCLUDED.insurance_number, bank_name = EXCLUDED.bank_name, bank_account_number = EXCLUDED.bank_account_number, bank_sheba_number = EXCLUDED.bank_sheba_number, department = EXCLUDED.department, job_title = EXCLUDED.job_title, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [
         emp.empId,
         tenantId,
@@ -1228,12 +1231,12 @@ export async function runSeed() {
 
     // ثبت حکم کارگزینی
     await run(
-      `INSERT OR REPLACE INTO payroll_contracts (
+      `INSERT INTO payroll_contracts (
         id, tenant_id, company_id, employee_id, contract_type,
         start_date_shamsi, end_date_shamsi, monthly_base_salary,
         monthly_housing_allowance, monthly_grocery_allowance, monthly_seniority_bonus,
         child_count, monthly_child_allowance_per_child, is_active, created_at
-      ) VALUES (?, ?, ?, ?, 'PERMANENT', '1403/01/01', '1403/12/29', ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, 'PERMANENT', '1403/01/01', '1403/12/29', ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, employee_id = EXCLUDED.employee_id, contract_type = EXCLUDED.contract_type, start_date_shamsi = EXCLUDED.start_date_shamsi, end_date_shamsi = EXCLUDED.end_date_shamsi, monthly_base_salary = EXCLUDED.monthly_base_salary, monthly_housing_allowance = EXCLUDED.monthly_housing_allowance, monthly_grocery_allowance = EXCLUDED.monthly_grocery_allowance, monthly_seniority_bonus = EXCLUDED.monthly_seniority_bonus, child_count = EXCLUDED.child_count, monthly_child_allowance_per_child = EXCLUDED.monthly_child_allowance_per_child, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [
         emp.contractId,
         tenantId,
@@ -1282,12 +1285,12 @@ export async function runSeed() {
 
   for (const ast of fixedAssetsData) {
     await run(
-      `INSERT OR REPLACE INTO fixed_assets (
+      `INSERT INTO fixed_assets (
         id, tenant_id, company_id, branch_id, asset_code, title, category,
         purchase_date_shamsi, historical_cost, salvage_value, depreciation_method,
         annual_rate_percentage, useful_life_years, accumulated_depreciation, book_value,
         status, cost_center_dimension_id, location, created_at
-      ) VALUES (?, ?, ?, 'branch-central', ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', ?, 'ACTIVE', 'dim-cc-mgmt', ?, ?)`,
+      ) VALUES (?, ?, ?, 'branch-central-1', ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', ?, 'ACTIVE', 'dim-cc-mgmt', ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, asset_code = EXCLUDED.asset_code, title = EXCLUDED.title, category = EXCLUDED.category, purchase_date_shamsi = EXCLUDED.purchase_date_shamsi, historical_cost = EXCLUDED.historical_cost, salvage_value = EXCLUDED.salvage_value, depreciation_method = EXCLUDED.depreciation_method, annual_rate_percentage = EXCLUDED.annual_rate_percentage, useful_life_years = EXCLUDED.useful_life_years, accumulated_depreciation = EXCLUDED.accumulated_depreciation, book_value = EXCLUDED.book_value, status = EXCLUDED.status, cost_center_dimension_id = EXCLUDED.cost_center_dimension_id, location = EXCLUDED.location, created_at = EXCLUDED.created_at`,
       [
         ast.id,
         tenantId,
@@ -1349,9 +1352,9 @@ export async function runSeed() {
 
   for (const w of defaultWidgets) {
     await run(
-      `INSERT OR REPLACE INTO dashboard_widgets (
+      `INSERT INTO dashboard_widgets (
         id, tenant_id, user_id, widget_type, title, position_x, position_y, width, height, config_json, is_visible, created_at
-      ) VALUES (?, ?, 'user-admin-1', ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, 'user-admin-1', ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, user_id = EXCLUDED.user_id, widget_type = EXCLUDED.widget_type, title = EXCLUDED.title, position_x = EXCLUDED.position_x, position_y = EXCLUDED.position_y, width = EXCLUDED.width, height = EXCLUDED.height, config_json = EXCLUDED.config_json, is_visible = EXCLUDED.is_visible, created_at = EXCLUDED.created_at`,
       [w.id, tenantId, w.type, w.title, w.x, w.y, w.w, w.h, w.config, now]
     );
   }
@@ -1382,9 +1385,9 @@ export async function runSeed() {
 
   for (const ar of defaultAlertRules) {
     await run(
-      `INSERT OR REPLACE INTO financial_alert_rules (
+      `INSERT INTO financial_alert_rules (
         id, tenant_id, company_id, rule_code, title, threshold_amount, severity, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, rule_code = EXCLUDED.rule_code, title = EXCLUDED.title, threshold_amount = EXCLUDED.threshold_amount, severity = EXCLUDED.severity, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [ar.id, tenantId, companyId, ar.code, ar.title, ar.threshold, ar.severity, now]
     );
   }
@@ -1438,9 +1441,9 @@ export async function runSeed() {
 
   for (const t of hardwareTerminals) {
     await run(
-      `INSERT OR REPLACE INTO hardware_terminals (
+      `INSERT INTO hardware_terminals (
         id, tenant_id, company_id, branch_id, device_type, title, ip_address, port, serial_number, is_active, config_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, branch_id = EXCLUDED.branch_id, device_type = EXCLUDED.device_type, title = EXCLUDED.title, ip_address = EXCLUDED.ip_address, port = EXCLUDED.port, serial_number = EXCLUDED.serial_number, is_active = EXCLUDED.is_active, config_json = EXCLUDED.config_json, created_at = EXCLUDED.created_at`,
       [t.id, tenantId, companyId, branchId, t.deviceType, t.title, t.ip, t.port, t.serial, t.config, now]
     );
   }
@@ -1467,9 +1470,9 @@ export async function runSeed() {
 
   for (const al of attendanceLogs) {
     await run(
-      `INSERT OR REPLACE INTO attendance_logs (
+      `INSERT INTO attendance_logs (
         id, tenant_id, company_id, employee_id, terminal_id, log_date_shamsi, log_time, log_type, is_processed, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, false, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, company_id = EXCLUDED.company_id, employee_id = EXCLUDED.employee_id, terminal_id = EXCLUDED.terminal_id, log_date_shamsi = EXCLUDED.log_date_shamsi, log_time = EXCLUDED.log_time, log_type = EXCLUDED.log_type, is_processed = EXCLUDED.is_processed, created_at = EXCLUDED.created_at`,
       [al.id, tenantId, companyId, al.empId, al.termId, al.dateShamsi, al.time, al.type, now]
     );
   }
@@ -1573,11 +1576,11 @@ export async function runSeed() {
 
   for (const p of saasPlans) {
     await run(
-      `INSERT OR REPLACE INTO saas_plans (
+      `INSERT INTO saas_plans (
         id, code, name_fa, tier, monthly_price, yearly_price, max_users, max_branches,
         max_monthly_transactions, allowed_modules_json, has_api_access,
         has_audit_chain_verification, storage_quota_mb, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?) ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, name_fa = EXCLUDED.name_fa, tier = EXCLUDED.tier, monthly_price = EXCLUDED.monthly_price, yearly_price = EXCLUDED.yearly_price, max_users = EXCLUDED.max_users, max_branches = EXCLUDED.max_branches, max_monthly_transactions = EXCLUDED.max_monthly_transactions, allowed_modules_json = EXCLUDED.allowed_modules_json, has_api_access = EXCLUDED.has_api_access, has_audit_chain_verification = EXCLUDED.has_audit_chain_verification, storage_quota_mb = EXCLUDED.storage_quota_mb, is_active = EXCLUDED.is_active, created_at = EXCLUDED.created_at`,
       [
         p.id,
         p.code,
@@ -1600,40 +1603,47 @@ export async function runSeed() {
   // ۲. اشتراک فعال سازمان اصلی (org-default)
   const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
   await run(
-    `INSERT OR REPLACE INTO tenant_subscriptions (
+    `INSERT INTO tenant_subscriptions (
       id, organization_id, plan_id, status, started_at, expires_at, auto_renew,
       billing_cycle, payment_reference, created_at, updated_at
-    ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, 1, 'YEARLY', 'SHP-SUB-1403-001', ?, ?)`,
+    ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, true, 'YEARLY', 'SHP-SUB-1403-001', ?, ?) ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id, plan_id = EXCLUDED.plan_id, status = EXCLUDED.status, started_at = EXCLUDED.started_at, expires_at = EXCLUDED.expires_at, auto_renew = EXCLUDED.auto_renew, billing_cycle = EXCLUDED.billing_cycle, payment_reference = EXCLUDED.payment_reference, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
     ['sub-active-default', tenantId, 'plan-pro', now, oneYearFromNow, now, now]
   );
 
   // ۳. سهمیه و متغیرهای مصرف ماه جاری
   await run(
-    `INSERT OR REPLACE INTO tenant_usage_quotas (
+    `INSERT INTO tenant_usage_quotas (
       id, organization_id, period_month, current_transactions, current_users,
       current_storage_mb, last_updated_at
-    ) VALUES (?, ?, '1403-12', 145, 4, 85, ?)`,
+    ) VALUES (?, ?, '1403-12', 145, 4, 85, ?) ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id, period_month = EXCLUDED.period_month, current_transactions = EXCLUDED.current_transactions, current_users = EXCLUDED.current_users, current_storage_mb = EXCLUDED.current_storage_mb, last_updated_at = EXCLUDED.last_updated_at`,
     ['quota-default-1403-12', tenantId, now]
   );
 
   // ۴. تنظیمات امنیتی پایه کاربر ادمین (۲FA آماده و غیرفعال)
   await run(
-    `INSERT OR REPLACE INTO user_security_settings (
+    `INSERT INTO user_security_settings (
       id, user_id, two_factor_enabled, two_factor_secret, backup_codes_json,
       last_password_change, failed_login_attempts, locked_until, updated_at
-    ) VALUES (?, ?, 0, 'JBSWY3DPEHPK3PXP', ?, ?, 0, NULL, ?)`,
+    ) VALUES (?, ?, false, 'JBSWY3DPEHPK3PXP', ?, ?, 0, NULL, ?) ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, two_factor_enabled = EXCLUDED.two_factor_enabled, two_factor_secret = EXCLUDED.two_factor_secret, backup_codes_json = EXCLUDED.backup_codes_json, last_password_change = EXCLUDED.last_password_change, failed_login_attempts = EXCLUDED.failed_login_attempts, locked_until = EXCLUDED.locked_until, updated_at = EXCLUDED.updated_at`,
     ['sec-user-admin-1', 'user-admin-1', JSON.stringify(['A1B2C3D4', 'E5F6G7H8']), now, now]
   );
 
   console.log('[Seed Phase 11] SaaS plans, subscriptions, quotas and security settings seeded successfully.');
 
   console.log('[Seed] Database populated successfully with full enterprise accounting baseline!');
-  db.close();
+  if (!existingDb) {
+    await db.close();
+  }
 }
 
 if (require.main === module) {
-  runSeed().catch((err) => {
-    console.error('[Seed] Error during seeding:', err);
-    process.exit(1);
-  });
+  runSeed()
+    .then(() => {
+      console.log('[Seed] Database seeded successfully.');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('[Seed] Seeding failed:', err);
+      process.exit(1);
+    });
 }

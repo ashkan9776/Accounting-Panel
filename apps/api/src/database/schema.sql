@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     subdomain TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     plan_id TEXT DEFAULT 'STANDARD',
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL
 );
 
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS branches (
     company_id TEXT NOT NULL,
     code TEXT NOT NULL,
     name TEXT NOT NULL,
-    is_central INTEGER DEFAULT 0,
+    is_central BOOLEAN DEFAULT FALSE,
     address TEXT,
     phone TEXT,
     created_at TEXT NOT NULL,
@@ -53,8 +53,8 @@ CREATE TABLE IF NOT EXISTS fiscal_years (
     end_date_shamsi TEXT NOT NULL,
     start_date_gregorian TEXT NOT NULL,
     end_date_gregorian TEXT NOT NULL,
-    is_closed INTEGER DEFAULT 0,
-    is_locked INTEGER DEFAULT 0,
+    is_closed BOOLEAN DEFAULT FALSE,
+    is_locked BOOLEAN DEFAULT FALSE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id)
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS fiscal_periods (
     fiscal_year_id TEXT NOT NULL,
     period_number INTEGER NOT NULL,
     title TEXT NOT NULL,
-    is_closed INTEGER DEFAULT 0,
+    is_closed BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (fiscal_year_id) REFERENCES fiscal_years(id)
 );
@@ -79,8 +79,8 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     password_hash TEXT NOT NULL,
     full_name TEXT NOT NULL,
-    is_super_admin INTEGER DEFAULT 0,
-    is_active INTEGER DEFAULT 1,
+    is_super_admin BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     UNIQUE(tenant_id, mobile)
@@ -154,14 +154,14 @@ CREATE TABLE IF NOT EXISTS account_subsidiaries (
     code TEXT NOT NULL,
     title TEXT NOT NULL,
     nature TEXT NOT NULL,
-    requires_floating_dimension_1 INTEGER DEFAULT 0,
+    requires_floating_dimension_1 BOOLEAN DEFAULT FALSE,
     allowed_dimension_1_type TEXT,
-    requires_floating_dimension_2 INTEGER DEFAULT 0,
+    requires_floating_dimension_2 BOOLEAN DEFAULT FALSE,
     allowed_dimension_2_type TEXT,
-    requires_floating_dimension_3 INTEGER DEFAULT 0,
+    requires_floating_dimension_3 BOOLEAN DEFAULT FALSE,
     allowed_dimension_3_type TEXT,
-    is_currency_dependent INTEGER DEFAULT 0,
-    is_active INTEGER DEFAULT 1,
+    is_currency_dependent BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
     description TEXT,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (head_id) REFERENCES account_heads(id),
@@ -176,9 +176,10 @@ CREATE TABLE IF NOT EXISTS floating_dimensions (
     code TEXT NOT NULL,
     title TEXT NOT NULL,
     reference_id TEXT,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    UNIQUE(tenant_id, company_id, code)
 );
 
 CREATE TABLE IF NOT EXISTS account_mappings (
@@ -263,13 +264,14 @@ CREATE TABLE IF NOT EXISTS rule_versions (
     effective_to_shamsi TEXT,
     legal_reference TEXT NOT NULL,
     parameters_json TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (rule_definition_id) REFERENCES rule_definitions(id)
 );
 
 -- ۶. زنجیره ممیزی امن (Audit Trail with Cryptographic Hash Chaining)
 CREATE TABLE IF NOT EXISTS audit_logs (
+    seq_no BIGSERIAL,
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -315,12 +317,12 @@ CREATE TABLE IF NOT EXISTS parties (
     address TEXT,
     credit_limit TEXT DEFAULT '0', -- سقف اعتبار ریالی
     credit_terms_days INTEGER DEFAULT 0, -- مهلت تسویه نسیه
-    is_customer INTEGER DEFAULT 1,
-    is_supplier INTEGER DEFAULT 0,
-    is_employee INTEGER DEFAULT 0,
-    is_shareholder INTEGER DEFAULT 0,
+    is_customer BOOLEAN DEFAULT TRUE,
+    is_supplier BOOLEAN DEFAULT FALSE,
+    is_employee BOOLEAN DEFAULT FALSE,
+    is_shareholder BOOLEAN DEFAULT FALSE,
     floating_dimension_id TEXT, -- لینک خودکار به تفصیلی شناور
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -341,7 +343,7 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
     card_number TEXT,
     floating_dimension_id TEXT NOT NULL,
     initial_balance TEXT DEFAULT '0',
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -358,7 +360,7 @@ CREATE TABLE IF NOT EXISTS cash_desks (
     title TEXT NOT NULL,
     floating_dimension_id TEXT NOT NULL,
     initial_balance TEXT DEFAULT '0',
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -377,7 +379,7 @@ CREATE TABLE IF NOT EXISTS petty_cash_funds (
     custodian_party_id TEXT NOT NULL, -- تنخواه‌دار
     ceiling_amount TEXT NOT NULL, -- سقف تنخواه
     floating_dimension_id TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -409,7 +411,7 @@ CREATE TABLE IF NOT EXISTS cheques (
     latest_journal_entry_id TEXT,
     sayad_status TEXT DEFAULT 'INQUIRED', -- INQUIRED, REGISTERED, CONFIRMED, TRANSFERRED, REJECTED
     sayad_color TEXT DEFAULT 'WHITE', -- WHITE, YELLOW, ORANGE, BROWN, RED
-    is_guarantee INTEGER DEFAULT 0, -- آیا چک ضمانتی است؟
+    is_guarantee BOOLEAN DEFAULT FALSE, -- آیا چک ضمانتی است؟
     description TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -468,7 +470,7 @@ CREATE TABLE IF NOT EXISTS bank_statements (
     credit TEXT DEFAULT '0',
     balance TEXT DEFAULT '0',
     description TEXT,
-    is_reconciled INTEGER DEFAULT 0,
+    is_reconciled BOOLEAN DEFAULT FALSE,
     matched_journal_line_id TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
@@ -506,7 +508,7 @@ CREATE TABLE IF NOT EXISTS product_units (
     code TEXT NOT NULL,
     title TEXT NOT NULL,
     symbol TEXT,
-    is_reference INTEGER DEFAULT 1,
+    is_reference BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id)
@@ -535,14 +537,14 @@ CREATE TABLE IF NOT EXISTS products (
     name TEXT NOT NULL,
     type TEXT NOT NULL, -- GOODS, SERVICE
     barcode TEXT,
-    tax_exempt INTEGER DEFAULT 0,
+    tax_exempt BOOLEAN DEFAULT FALSE,
     vat_rate TEXT DEFAULT '0.10',
     valuation_method TEXT DEFAULT 'MOVING_AVERAGE', -- MOVING_AVERAGE, FIFO
     min_stock_alert TEXT DEFAULT '0',
     max_stock_alert TEXT DEFAULT '0',
     sell_price TEXT DEFAULT '0',
     purchase_price TEXT DEFAULT '0',
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -576,7 +578,7 @@ CREATE TABLE IF NOT EXISTS warehouses (
     address TEXT,
     phone TEXT,
     keeper_name TEXT,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -585,6 +587,7 @@ CREATE TABLE IF NOT EXISTS warehouses (
 
 -- ۱۷. کاردکس مقداری - ریالی انبار (Stock Ledger)
 CREATE TABLE IF NOT EXISTS stock_ledger_entries (
+    seq_no BIGSERIAL,
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     company_id TEXT NOT NULL,
@@ -762,8 +765,8 @@ CREATE TABLE IF NOT EXISTS moadian_settings (
     public_key_base64 TEXT NOT NULL, -- کلید عمومی بدون هدر جهت کارپوشه
     tsp_provider_name TEXT, -- نام شرکت معتمد در صورت انتخاب
     tsp_api_key TEXT,
-    is_sandbox_mode INTEGER DEFAULT 1, -- حالت شبیه‌ساز یا واقعی
-    is_active INTEGER DEFAULT 1,
+    is_sandbox_mode BOOLEAN DEFAULT TRUE, -- حالت شبیه‌ساز یا واقعی
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
@@ -796,7 +799,7 @@ CREATE TABLE IF NOT EXISTS moadian_invoices (
     invoice_subject TEXT NOT NULL, -- MAIN, CORRECTION, CANCELLATION, RETURN
     reference_tax_id TEXT, -- شماره مالیاتی صورتحساب مرجع در فاکتورهای اصلاحی/ابطالی
     issue_date_shamsi TEXT NOT NULL,
-    issue_date_timestamp INTEGER NOT NULL,
+    issue_date_timestamp BIGINT NOT NULL,
     total_gross_amount TEXT NOT NULL,
     total_discount_amount TEXT DEFAULT '0',
     total_net_amount TEXT NOT NULL,
@@ -805,7 +808,7 @@ CREATE TABLE IF NOT EXISTS moadian_invoices (
     status TEXT DEFAULT 'PENDING', -- PENDING, QUEUED, SENT, IN_PROGRESS, CONFIRMED, REJECTED, FAILED
     tracking_token TEXT, -- کد پیگیری دریافت شده از کارپوشه سازمان مالیاتی
     packet_id TEXT,
-    server_timestamp INTEGER,
+    server_timestamp BIGINT,
     response_errors_json TEXT, -- لاگ کدهای خطا در صورت رد شدن
     created_by_user_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -893,7 +896,7 @@ CREATE TABLE IF NOT EXISTS pos_terminals (
     psp_name TEXT NOT NULL, -- به‌پرداخت، سامان‌کیش، سداد، آپ
     bank_account_id TEXT NOT NULL,
     floating_dimension_id TEXT NOT NULL, -- تفصیلی شناور معین ۱۱۰۴ (وجوه در راه)
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -980,7 +983,7 @@ CREATE TABLE IF NOT EXISTS pos_orders (
     cash_amount TEXT DEFAULT '0',
     pos_card_amount TEXT DEFAULT '0',
     idempotency_key TEXT, -- تضمین عدم ثبت تکراری در سناریوهای قطعی اینترنت
-    is_offline_synced INTEGER DEFAULT 0,
+    is_offline_synced BOOLEAN DEFAULT FALSE,
     offline_created_at TEXT,
     moadian_tax_id TEXT,
     created_at TEXT NOT NULL,
@@ -1006,7 +1009,7 @@ CREATE TABLE IF NOT EXISTS pos_order_items (
     vat_amount TEXT DEFAULT '0',
     unit_cogs TEXT DEFAULT '0',
     total_cogs TEXT DEFAULT '0',
-    is_weighted INTEGER DEFAULT 0,
+    is_weighted BOOLEAN DEFAULT FALSE,
     weight_grams INTEGER,
     barcode_scanned TEXT,
     created_at TEXT NOT NULL,
@@ -1051,7 +1054,7 @@ CREATE TABLE IF NOT EXISTS restaurant_tables (
     merged_with_table_id TEXT,
     current_order_id TEXT,
     qr_code_token TEXT,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
@@ -1070,7 +1073,7 @@ CREATE TABLE IF NOT EXISTS restaurant_menu_categories (
     icon TEXT,
     display_order INTEGER DEFAULT 0,
     kitchen_station TEXT DEFAULT 'HOT_KITCHEN', -- HOT_KITCHEN, COLD_KITCHEN, BAR_CAFE, BAKERY_DESSERT
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id)
@@ -1084,7 +1087,7 @@ CREATE TABLE IF NOT EXISTS restaurant_recipes (
     menu_product_id TEXT NOT NULL,
     yield_quantity TEXT DEFAULT '1',
     notes TEXT,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
@@ -1201,7 +1204,7 @@ CREATE TABLE IF NOT EXISTS restaurant_deliveries (
     delivered_at TEXT,
     cash_collected TEXT DEFAULT '0',
     pos_card_collected TEXT DEFAULT '0',
-    is_settled INTEGER DEFAULT 0,
+    is_settled BOOLEAN DEFAULT FALSE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -1225,7 +1228,7 @@ CREATE TABLE IF NOT EXISTS manufacturing_work_centers (
     capacity_hours_per_day TEXT DEFAULT '8',
     labor_hourly_rate TEXT DEFAULT '0',
     overhead_hourly_rate TEXT DEFAULT '0',
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id)
@@ -1241,8 +1244,8 @@ CREATE TABLE IF NOT EXISTS manufacturing_boms (
     bom_name TEXT NOT NULL,
     version TEXT DEFAULT '1.0',
     base_quantity TEXT DEFAULT '1',
-    is_default INTEGER DEFAULT 1,
-    is_active INTEGER DEFAULT 1,
+    is_default BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT TRUE,
     standard_material_cost TEXT DEFAULT '0',
     standard_labor_cost TEXT DEFAULT '0',
     standard_overhead_cost TEXT DEFAULT '0',
@@ -1262,7 +1265,7 @@ CREATE TABLE IF NOT EXISTS manufacturing_bom_items (
     component_product_id TEXT NOT NULL,
     quantity TEXT NOT NULL,
     scrap_percentage TEXT DEFAULT '0',
-    is_sub_assembly INTEGER DEFAULT 0,
+    is_sub_assembly BOOLEAN DEFAULT FALSE,
     sub_bom_id TEXT,
     substitute_product_id TEXT,
     line_order INTEGER DEFAULT 1,
@@ -1350,6 +1353,7 @@ CREATE TABLE IF NOT EXISTS manufacturing_order_materials (
 
 -- ۴۷. کارکرد واقعی مراکز کاری در سفارش تولید (Production Order Operations)
 CREATE TABLE IF NOT EXISTS manufacturing_order_operations (
+    seq_no BIGSERIAL,
     id TEXT PRIMARY KEY,
     production_order_id TEXT NOT NULL,
     work_center_id TEXT NOT NULL,
@@ -1404,7 +1408,7 @@ CREATE TABLE IF NOT EXISTS payroll_employees (
     bank_sheba_number TEXT NOT NULL,
     department TEXT,
     job_title TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -1426,7 +1430,7 @@ CREATE TABLE IF NOT EXISTS payroll_contracts (
     monthly_seniority_bonus TEXT DEFAULT '0',
     child_count INTEGER DEFAULT 0,
     monthly_child_allowance_per_child TEXT DEFAULT '0',
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
@@ -1566,7 +1570,7 @@ CREATE TABLE IF NOT EXISTS dashboard_widgets (
     width INTEGER DEFAULT 4,
     height INTEGER DEFAULT 3,
     config_json TEXT,
-    is_visible INTEGER DEFAULT 1,
+    is_visible BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -1581,7 +1585,7 @@ CREATE TABLE IF NOT EXISTS financial_alert_rules (
     title TEXT NOT NULL,
     threshold_amount TEXT DEFAULT '0',
     severity TEXT NOT NULL, -- INFO, WARNING, CRITICAL
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id)
@@ -1598,7 +1602,7 @@ CREATE TABLE IF NOT EXISTS financial_alerts (
     message TEXT NOT NULL,
     due_date_shamsi TEXT,
     action_required TEXT,
-    is_resolved INTEGER DEFAULT 0,
+    is_resolved BOOLEAN DEFAULT FALSE,
     resolved_at TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
@@ -1615,6 +1619,7 @@ CREATE INDEX IF NOT EXISTS idx_financial_alerts_active ON financial_alerts(tenan
 
 -- ۵۹. سفارش‌های فروش آنلاین و اینترنتی (Online Orders)
 CREATE TABLE IF NOT EXISTS online_orders (
+    seq_no BIGSERIAL,
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     company_id TEXT NOT NULL,
@@ -1648,7 +1653,7 @@ CREATE TABLE IF NOT EXISTS online_order_items (
     id TEXT PRIMARY KEY,
     online_order_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
-    quantity REAL NOT NULL,
+    quantity NUMERIC(28, 4) NOT NULL,
     unit_price TEXT NOT NULL,
     discount_amount TEXT DEFAULT '0',
     net_amount TEXT NOT NULL,
@@ -1687,9 +1692,9 @@ CREATE TABLE IF NOT EXISTS visitor_visits (
     visitor_user_id TEXT NOT NULL,
     customer_party_id TEXT NOT NULL,
     visit_date_shamsi TEXT NOT NULL,
-    latitude REAL NOT NULL,
-    longitude REAL NOT NULL,
-    is_within_geofence INTEGER DEFAULT 1,
+    latitude NUMERIC(10, 7) NOT NULL,
+    longitude NUMERIC(10, 7) NOT NULL,
+    is_within_geofence BOOLEAN DEFAULT TRUE,
     visit_notes TEXT,
     sales_document_id TEXT,
     created_at TEXT NOT NULL,
@@ -1711,7 +1716,7 @@ CREATE TABLE IF NOT EXISTS hardware_terminals (
     ip_address TEXT,
     port INTEGER,
     serial_number TEXT,
-    is_active INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
     config_json TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
@@ -1729,11 +1734,11 @@ CREATE TABLE IF NOT EXISTS attendance_logs (
     log_date_shamsi TEXT NOT NULL,
     log_time TEXT NOT NULL,
     log_type TEXT NOT NULL, -- CLOCK_IN, CLOCK_OUT
-    is_processed INTEGER DEFAULT 0,
+    is_processed BOOLEAN DEFAULT FALSE,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
-    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    FOREIGN KEY (employee_id) REFERENCES payroll_employees(id),
     FOREIGN KEY (terminal_id) REFERENCES hardware_terminals(id)
 );
 
@@ -1758,10 +1763,10 @@ CREATE TABLE IF NOT EXISTS saas_plans (
     max_branches INTEGER NOT NULL DEFAULT 1,
     max_monthly_transactions INTEGER NOT NULL DEFAULT 500,
     allowed_modules_json TEXT NOT NULL, -- JSON array of module names
-    has_api_access INTEGER NOT NULL DEFAULT 0,
-    has_audit_chain_verification INTEGER NOT NULL DEFAULT 1,
+    has_api_access BOOLEAN NOT NULL DEFAULT FALSE,
+    has_audit_chain_verification BOOLEAN NOT NULL DEFAULT TRUE,
     storage_quota_mb INTEGER NOT NULL DEFAULT 100,
-    is_active INTEGER NOT NULL DEFAULT 1,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TEXT NOT NULL
 );
 
@@ -1773,7 +1778,7 @@ CREATE TABLE IF NOT EXISTS tenant_subscriptions (
     status TEXT NOT NULL, -- TRIAL, ACTIVE, EXPIRED, CANCELLED, GRACE_PERIOD
     started_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    auto_renew INTEGER NOT NULL DEFAULT 1,
+    auto_renew BOOLEAN NOT NULL DEFAULT TRUE,
     billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY', -- MONTHLY, YEARLY
     payment_reference TEXT,
     created_at TEXT NOT NULL,
@@ -1817,7 +1822,7 @@ CREATE TABLE IF NOT EXISTS data_migration_batches (
 CREATE TABLE IF NOT EXISTS user_security_settings (
     id TEXT PRIMARY KEY,
     user_id TEXT UNIQUE NOT NULL,
-    two_factor_enabled INTEGER NOT NULL DEFAULT 0,
+    two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     two_factor_secret TEXT,
     backup_codes_json TEXT,
     last_password_change TEXT,

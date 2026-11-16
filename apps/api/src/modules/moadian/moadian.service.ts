@@ -37,7 +37,11 @@ export class MoadianService {
     }
     // پنهان‌سازی کلید خصوصی در پاسخ API جهت امنیت
     const { private_key_pem, ...safeSettings } = settings;
-    return safeSettings;
+    return {
+      ...safeSettings,
+      is_sandbox_mode: (safeSettings.is_sandbox_mode === true || safeSettings.is_sandbox_mode === 1 || safeSettings.is_sandbox_mode === '1') ? 1 : 0,
+      is_active: (safeSettings.is_active === true || safeSettings.is_active === 1 || safeSettings.is_active === '1') ? 1 : 0
+    };
   }
 
   async updateSettings(
@@ -66,7 +70,7 @@ export class MoadianService {
         data.transportMethod || null,
         data.tspProviderName || null,
         data.tspApiKey || null,
-        data.isSandboxMode !== undefined ? (data.isSandboxMode ? 1 : 0) : null,
+        data.isSandboxMode !== undefined ? (data.isSandboxMode ? true : false) : null,
         now,
         tenantId,
         companyId

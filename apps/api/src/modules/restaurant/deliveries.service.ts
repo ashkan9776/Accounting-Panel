@@ -136,7 +136,7 @@ export class DeliveriesService {
     const unsettled = await this.db.query(
       `SELECT * FROM restaurant_deliveries
        WHERE tenant_id = ? AND company_id = ? AND courier_party_id = ?
-         AND status = 'DELIVERED' AND is_settled = 0`,
+         AND status = 'DELIVERED' AND is_settled = false`,
       [tenantId, companyId, courierPartyId]
     );
 
@@ -151,9 +151,9 @@ export class DeliveriesService {
     const now = new Date().toISOString();
     await this.db.run(
       `UPDATE restaurant_deliveries
-       SET is_settled = 1
+       SET is_settled = true
        WHERE tenant_id = ? AND company_id = ? AND courier_party_id = ?
-         AND status = 'DELIVERED' AND is_settled = 0`,
+         AND status = 'DELIVERED' AND is_settled = false`,
       [tenantId, companyId, courierPartyId]
     );
 

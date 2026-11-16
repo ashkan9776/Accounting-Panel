@@ -1,6 +1,27 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: accounting_saas_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: accounting
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: accounting_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - accounting_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accounting -d accounting_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   api:
     build:
       context: .
@@ -10,11 +31,14 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_PATH=/app/apps/api/storage/accounting.db
+      - DATABASE_URL=postgresql://accounting:password@postgres:5432/accounting_db
+      - PG_POOL_MAX=20
+      - PG_SSL=false
       - JWT_SECRET=ProductionSuperSecretKey_Accounting_SaaS_2026_Secure
       - JWT_EXPIRES_IN=7d
-    volumes:
-      - api_storage:/app/apps/api/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - accounting_net
     healthcheck:
@@ -39,7 +63,7 @@ services:
       - accounting_net
 
 volumes:
-  api_storage:
+  postgres_data:
     driver: local
 
 networks:

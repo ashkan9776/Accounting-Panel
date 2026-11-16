@@ -61,7 +61,7 @@ export class PosOrdersService {
     }
 
     const shift = await this.db.queryOne(
-      'SELECT * FROM pos_shifts WHERE tenant_id = ? AND company_id = ? AND id = ? AND status = "OPEN"',
+      "SELECT * FROM pos_shifts WHERE tenant_id = ? AND company_id = ? AND id = ? AND status = 'OPEN'",
       [tenantId, companyId, data.shiftId]
     );
     if (!shift) {
@@ -286,13 +286,13 @@ export class PosOrdersService {
       await this.db.run(
         `UPDATE pos_shifts
          SET total_sales_count = total_sales_count + 1,
-             total_sales_amount = total_sales_amount + ?,
-             total_cash_sales = total_cash_sales + ?,
-             total_pos_card_sales = total_pos_card_sales + ?,
-             total_discount_amount = total_discount_amount + ?,
-             total_vat_amount = total_vat_amount + ?,
-             total_cogs_amount = total_cogs_amount + ?,
-             expected_cash_balance = expected_cash_balance + ?,
+             total_sales_amount = (COALESCE(total_sales_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+             total_cash_sales = (COALESCE(total_cash_sales::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+             total_pos_card_sales = (COALESCE(total_pos_card_sales::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+             total_discount_amount = (COALESCE(total_discount_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+             total_vat_amount = (COALESCE(total_vat_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+             total_cogs_amount = (COALESCE(total_cogs_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+             expected_cash_balance = (COALESCE(expected_cash_balance::NUMERIC, 0) + ?::NUMERIC)::TEXT,
              updated_at = ?
          WHERE id = ?`,
         [
@@ -443,13 +443,13 @@ export class PosOrdersService {
     await this.db.run(
       `UPDATE pos_shifts
        SET total_sales_count = total_sales_count + 1,
-           total_sales_amount = total_sales_amount + ?,
-           total_cash_sales = total_cash_sales + ?,
-           total_pos_card_sales = total_pos_card_sales + ?,
-           total_discount_amount = total_discount_amount + ?,
-           total_vat_amount = total_vat_amount + ?,
-           total_cogs_amount = total_cogs_amount + ?,
-           expected_cash_balance = expected_cash_balance + ?,
+           total_sales_amount = (COALESCE(total_sales_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+           total_cash_sales = (COALESCE(total_cash_sales::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+           total_pos_card_sales = (COALESCE(total_pos_card_sales::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+           total_discount_amount = (COALESCE(total_discount_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+           total_vat_amount = (COALESCE(total_vat_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+           total_cogs_amount = (COALESCE(total_cogs_amount::NUMERIC, 0) + ?::NUMERIC)::TEXT,
+           expected_cash_balance = (COALESCE(expected_cash_balance::NUMERIC, 0) + ?::NUMERIC)::TEXT,
            updated_at = ?
        WHERE id = ?`,
       [

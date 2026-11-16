@@ -32,7 +32,7 @@ export class TreasuryService {
 
     // ایجاد تفصیلی شناور بانکی
     const maxCodeRow = await this.db.queryOne(
-      "SELECT MAX(CAST(code AS INTEGER)) as max_code FROM floating_dimensions WHERE tenant_id = ? AND dimension_type = 'BANK_ACCOUNT'",
+      "SELECT MAX(CAST(NULLIF(regexp_replace(code, '[^0-9]', '', 'g'), '') AS INTEGER)) as max_code FROM floating_dimensions WHERE tenant_id = ? AND dimension_type = 'BANK_ACCOUNT'",
       [tenantId]
     );
     const nextCode = ((maxCodeRow?.max_code || 300000) + 1).toString();
@@ -41,7 +41,7 @@ export class TreasuryService {
     await this.db.transaction(async (tx) => {
       await tx.run(
         `INSERT INTO floating_dimensions (id, tenant_id, company_id, dimension_type, code, title, reference_id, is_active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, true, ?)`,
         [floatingDimId, tenantId, companyId, FloatingDimensionType.BANK_ACCOUNT, nextCode, `${data.bankName} - ${data.accountNumber}`, id, now]
       );
 
@@ -49,7 +49,7 @@ export class TreasuryService {
         `INSERT INTO bank_accounts (
           id, tenant_id, company_id, bank_name, branch_name, branch_code,
           account_number, iban, card_number, floating_dimension_id, initial_balance, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
         [
           id,
           tenantId,
@@ -75,7 +75,7 @@ export class TreasuryService {
       `SELECT ba.*, fd.code as dimension_code
        FROM bank_accounts ba
        LEFT JOIN floating_dimensions fd ON fd.id = ba.floating_dimension_id
-       WHERE ba.tenant_id = ? AND ba.company_id = ? AND ba.is_active = 1`,
+       WHERE ba.tenant_id = ? AND ba.company_id = ? AND ba.is_active = true`,
       [tenantId, companyId]
     );
   }
@@ -98,13 +98,13 @@ export class TreasuryService {
     await this.db.transaction(async (tx) => {
       await tx.run(
         `INSERT INTO floating_dimensions (id, tenant_id, company_id, dimension_type, code, title, reference_id, is_active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, true, ?)`,
         [floatingDimId, tenantId, companyId, FloatingDimensionType.CASH_DESK, data.code, data.title, id, now]
       );
 
       await tx.run(
         `INSERT INTO cash_desks (id, tenant_id, company_id, branch_id, code, title, floating_dimension_id, initial_balance, is_active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
         [id, tenantId, companyId, branchId, data.code, data.title, floatingDimId, data.initialBalance ? data.initialBalance.toString() : '0', now]
       );
     });
@@ -117,7 +117,7 @@ export class TreasuryService {
       `SELECT cd.*, fd.code as dimension_code
        FROM cash_desks cd
        LEFT JOIN floating_dimensions fd ON fd.id = cd.floating_dimension_id
-       WHERE cd.tenant_id = ? AND cd.company_id = ? AND cd.is_active = 1`,
+       WHERE cd.tenant_id = ? AND cd.company_id = ? AND cd.is_active = true`,
       [tenantId, companyId]
     );
   }
@@ -144,7 +144,7 @@ export class TreasuryService {
 
     await this.db.run(
       `INSERT INTO petty_cash_funds (id, tenant_id, company_id, branch_id, code, title, custodian_party_id, ceiling_amount, floating_dimension_id, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
       [id, tenantId, companyId, branchId, data.code, data.title, data.custodianPartyId, data.ceilingAmount.toString(), custodian.floating_dimension_id, now]
     );
 
@@ -156,7 +156,7 @@ export class TreasuryService {
       `SELECT pcf.*, p.name as custodian_name
        FROM petty_cash_funds pcf
        JOIN parties p ON p.id = pcf.custodian_party_id
-       WHERE pcf.tenant_id = ? AND pcf.company_id = ? AND pcf.is_active = 1`,
+       WHERE pcf.tenant_id = ? AND pcf.company_id = ? AND pcf.is_active = true`,
       [tenantId, companyId]
     );
   }
@@ -271,7 +271,7 @@ export class TreasuryService {
       const id = randomUUID();
       await this.db.run(
         `INSERT INTO bank_statements (id, tenant_id, company_id, bank_account_id, statement_date_shamsi, reference_number, debit, credit, balance, description, is_reconciled, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, ?)`,
         [
           id,
           tenantId,

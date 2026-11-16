@@ -58,7 +58,7 @@ export class PartiesService {
 
     // ۲. ایجاد خودکار تفصیلی شناور در جدول floating_dimensions
     const maxCodeRow = await this.db.queryOne(
-      "SELECT MAX(CAST(code AS INTEGER)) as max_code FROM floating_dimensions WHERE tenant_id = ? AND dimension_type = 'PARTY'",
+      "SELECT MAX(CAST(NULLIF(regexp_replace(code, '[^0-9]', '', 'g'), '') AS INTEGER)) as max_code FROM floating_dimensions WHERE tenant_id = ? AND dimension_type = 'PARTY'",
       [tenantId]
     );
     const nextDimCode = ((maxCodeRow?.max_code || 100000) + 1).toString();
@@ -68,7 +68,7 @@ export class PartiesService {
       // ایجاد تفصیلی شناور
       await tx.run(
         `INSERT INTO floating_dimensions (id, tenant_id, company_id, dimension_type, code, title, reference_id, is_active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, true, ?)`,
         [floatingDimId, tenantId, companyId, FloatingDimensionType.PARTY, nextDimCode, data.name, partyId, now]
       );
 
@@ -80,7 +80,7 @@ export class PartiesService {
           postal_code, address, credit_limit, credit_terms_days,
           is_customer, is_supplier, is_employee, is_shareholder,
           floating_dimension_id, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
         [
           partyId,
           tenantId,
@@ -99,10 +99,10 @@ export class PartiesService {
           data.address || null,
           data.creditLimit ? data.creditLimit.toString() : '0',
           data.creditTermsDays || 0,
-          data.isCustomer !== undefined ? (data.isCustomer ? 1 : 0) : 1,
-          data.isSupplier ? 1 : 0,
-          data.isEmployee ? 1 : 0,
-          data.isShareholder ? 1 : 0,
+          data.isCustomer !== undefined ? Boolean(data.isCustomer) : true,
+          Boolean(data.isSupplier),
+          Boolean(data.isEmployee),
+          Boolean(data.isShareholder),
           floatingDimId,
           now
         ]
@@ -132,16 +132,16 @@ export class PartiesService {
       SELECT p.*, fd.code as dimension_code
       FROM parties p
       LEFT JOIN floating_dimensions fd ON fd.id = p.floating_dimension_id
-      WHERE p.tenant_id = ? AND p.company_id = ? AND p.is_active = 1
+      WHERE p.tenant_id = ? AND p.company_id = ? AND p.is_active = true
     `;
     const params: any[] = [tenantId, companyId];
 
     if (filters.type === 'customer') {
-      sql += ' AND p.is_customer = 1';
+      sql += ' AND p.is_customer = true';
     } else if (filters.type === 'supplier') {
-      sql += ' AND p.is_supplier = 1';
+      sql += ' AND p.is_supplier = true';
     } else if (filters.type === 'employee') {
-      sql += ' AND p.is_employee = 1';
+      sql += ' AND p.is_employee = true';
     }
 
     if (filters.search) {

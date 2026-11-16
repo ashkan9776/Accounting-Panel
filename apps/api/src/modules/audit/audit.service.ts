@@ -20,7 +20,7 @@ export class AuditService {
 
   async verifyChain(tenantId: string) {
     const rows = await this.db.query(
-      `SELECT rowid, * FROM audit_logs WHERE tenant_id = ? ORDER BY rowid ASC`,
+      `SELECT seq_no as rowid, * FROM audit_logs WHERE tenant_id = ? ORDER BY seq_no ASC`,
       [tenantId]
     );
 

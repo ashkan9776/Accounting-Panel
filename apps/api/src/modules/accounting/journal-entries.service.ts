@@ -40,9 +40,9 @@ export class JournalEntriesService {
     return map;
   }
 
-  private async getLatestAuditHash(tenantId: string): Promise<string> {
-    const latest = await this.db.queryOne(
-      'SELECT current_hash FROM audit_logs WHERE tenant_id = ? ORDER BY rowid DESC LIMIT 1',
+  private async getLatestAuditHash(tenantId: string, db: DatabaseService = this.db): Promise<string> {
+    const latest = await db.queryOne(
+      'SELECT current_hash FROM audit_logs WHERE tenant_id = ? ORDER BY seq_no DESC LIMIT 1',
       [tenantId]
     );
     return latest?.current_hash || AuditHashChain.GENESIS_HASH;
@@ -63,82 +63,84 @@ export class JournalEntriesService {
       lines: JournalLineInput[];
     }
   ) {
-    // ۱. بررسی سال مالی و عدم قفل بودن آن
-    const fy = await this.db.queryOne(
-      'SELECT * FROM fiscal_years WHERE id = ? AND tenant_id = ? AND company_id = ?',
-      [fiscalYearId, tenantId, companyId]
-    );
-    if (!fy) {
-      throw new BadRequestException('سال مالی نامعتبر است.');
-    }
-    if (fy.is_closed || fy.is_locked) {
-      throw new BadRequestException('سال مالی انتخاب شده بسته یا قفل است و امکان ثبت سند وجود ندارد.');
-    }
-    if (fy.start_date_shamsi && fy.end_date_shamsi) {
-      if (data.entryDateShamsi < fy.start_date_shamsi || data.entryDateShamsi > fy.end_date_shamsi) {
-        throw new BadRequestException(
-          `تاریخ سند (${data.entryDateShamsi}) خارج از محدوده سال مالی (${fy.start_date_shamsi} تا ${fy.end_date_shamsi}) است.`
+    return await this.db.transaction(async (tx) => {
+      // قفل تراکنش PostgreSQL روی تنانت و سال مالی جهت تضمین توالی بدون وقفه شماره‌ها
+      await tx.run('SELECT pg_advisory_xact_lock(hashtext($1))', [`tenant:${tenantId}:fy:${fiscalYearId}`]);
+
+      // ۱. بررسی سال مالی و عدم قفل بودن آن
+      const fy = await tx.queryOne(
+        'SELECT * FROM fiscal_years WHERE id = ? AND tenant_id = ? AND company_id = ?',
+        [fiscalYearId, tenantId, companyId]
+      );
+      if (!fy) {
+        throw new BadRequestException('سال مالی نامعتبر است.');
+      }
+      if (fy.is_closed || fy.is_locked) {
+        throw new BadRequestException('سال مالی انتخاب شده بسته یا قفل است و امکان ثبت سند وجود ندارد.');
+      }
+      if (fy.start_date_shamsi && fy.end_date_shamsi) {
+        if (data.entryDateShamsi < fy.start_date_shamsi || data.entryDateShamsi > fy.end_date_shamsi) {
+          throw new BadRequestException(
+            `تاریخ سند (${data.entryDateShamsi}) خارج از محدوده سال مالی (${fy.start_date_shamsi} تا ${fy.end_date_shamsi}) است.`
+          );
+        }
+      }
+
+      const monthPart = parseInt(data.entryDateShamsi.split('/')[1], 10);
+      if (!isNaN(monthPart)) {
+        const closedPeriod = await tx.queryOne(
+          'SELECT * FROM fiscal_periods WHERE tenant_id = ? AND fiscal_year_id = ? AND period_number = ? AND is_closed = true',
+          [tenantId, fiscalYearId, monthPart]
         );
+        if (closedPeriod) {
+          throw new BadRequestException(`دوره مالی ماه ${monthPart} بسته شده است و امکان ثبت سند وجود ندارد.`);
+        }
       }
-    }
 
-    const monthPart = parseInt(data.entryDateShamsi.split('/')[1], 10);
-    if (!isNaN(monthPart)) {
-      const closedPeriod = await this.db.queryOne(
-        'SELECT * FROM fiscal_periods WHERE tenant_id = ? AND fiscal_year_id = ? AND period_number = ? AND is_closed = 1',
-        [tenantId, fiscalYearId, monthPart]
+      const subMap = await this.getSubsidiariesMap(tenantId, companyId);
+
+      // ۲. محاسبه شماره عطف و شماره روزانه بعدی
+      const maxSeqRow = await tx.queryOne(
+        'SELECT MAX(sequence_number) as max_seq FROM journal_entries WHERE tenant_id = ? AND fiscal_year_id = ?',
+        [tenantId, fiscalYearId]
       );
-      if (closedPeriod) {
-        throw new BadRequestException(`دوره مالی ماه ${monthPart} بسته شده است و امکان ثبت سند وجود ندارد.`);
+      const nextSeq = (maxSeqRow?.max_seq || 0) + 1;
+
+      const maxDailyRow = await tx.queryOne(
+        'SELECT MAX(daily_number) as max_daily FROM journal_entries WHERE tenant_id = ? AND fiscal_year_id = ? AND entry_date_shamsi = ?',
+        [tenantId, fiscalYearId, data.entryDateShamsi]
+      );
+      const nextDaily = (maxDailyRow?.max_daily || 0) + 1;
+
+      const idGen = () => randomUUID();
+
+      // ۳. اعتبارسنجی حسابی و تولید مدل سند
+      let domainEntry;
+      try {
+        domainEntry = JournalEngine.createEntry(
+          {
+            tenantId,
+            companyId,
+            branchId,
+            fiscalYearId,
+            entryDateShamsi: data.entryDateShamsi,
+            entryType: data.entryType || JournalEntryType.NORMAL,
+            description: data.description,
+            sourceModule: data.sourceModule,
+            sourceDocumentId: data.sourceDocumentId,
+            createdByUserId: userId,
+            lines: data.lines
+          },
+          nextSeq,
+          nextDaily,
+          idGen,
+          subMap
+        );
+      } catch (err: any) {
+        throw new BadRequestException(err.message);
       }
-    }
 
-    const subMap = await this.getSubsidiariesMap(tenantId, companyId);
-
-    // ۲. محاسبه شماره عطف و شماره روزانه بعدی
-    const maxSeqRow = await this.db.queryOne(
-      'SELECT MAX(sequence_number) as max_seq FROM journal_entries WHERE tenant_id = ? AND fiscal_year_id = ?',
-      [tenantId, fiscalYearId]
-    );
-    const nextSeq = (maxSeqRow?.max_seq || 0) + 1;
-
-    const maxDailyRow = await this.db.queryOne(
-      'SELECT MAX(daily_number) as max_daily FROM journal_entries WHERE tenant_id = ? AND fiscal_year_id = ? AND entry_date_shamsi = ?',
-      [tenantId, fiscalYearId, data.entryDateShamsi]
-    );
-    const nextDaily = (maxDailyRow?.max_daily || 0) + 1;
-
-    let idCounter = 1;
-    const idGen = () => randomUUID();
-
-    // ۳. اعتبارسنجی حسابی و تولید مدل سند
-    let domainEntry;
-    try {
-      domainEntry = JournalEngine.createEntry(
-        {
-          tenantId,
-          companyId,
-          branchId,
-          fiscalYearId,
-          entryDateShamsi: data.entryDateShamsi,
-          entryType: data.entryType || JournalEntryType.NORMAL,
-          description: data.description,
-          sourceModule: data.sourceModule,
-          sourceDocumentId: data.sourceDocumentId,
-          createdByUserId: userId,
-          lines: data.lines
-        },
-        nextSeq,
-        nextDaily,
-        idGen,
-        subMap
-      );
-    } catch (err: any) {
-      throw new BadRequestException(err.message);
-    }
-
-    // ۴. ثبت در پایگاه داده در قالب تراکنش ACID
-    await this.db.transaction(async (tx) => {
+      // ۴. ثبت در پایگاه داده در قالب تراکنش ACID
       await tx.run(
         `INSERT INTO journal_entries (
           id, tenant_id, company_id, branch_id, fiscal_year_id,
@@ -195,7 +197,7 @@ export class JournalEntriesService {
       }
 
       // درج در زنجیره ممیزی
-      const prevHash = await this.getLatestAuditHash(tenantId);
+      const prevHash = await this.getLatestAuditHash(tenantId, tx);
       const auditLog = AuditHashChain.createLogEntry(
         randomUUID(),
         tenantId,
@@ -223,9 +225,9 @@ export class JournalEntriesService {
           JSON.stringify(auditLog.payload)
         ]
       );
-    });
 
-    return domainEntry;
+      return domainEntry;
+    });
   }
 
   async listEntries(
@@ -307,26 +309,28 @@ export class JournalEntriesService {
   }
 
   async finalizeEntry(tenantId: string, id: string, userId: string) {
-    const entry = await this.getEntryById(tenantId, id);
-    if (entry.status !== JournalEntryStatus.APPROVED) {
-      throw new BadRequestException('برای قطعی‌سازی و ثبت در دفاتر، سند باید ابتدا به تایید حسابدار برسد.');
-    }
+    return await this.db.transaction(async (tx) => {
+      const entry = await this.getEntryById(tenantId, id);
+      if (entry.status !== JournalEntryStatus.APPROVED) {
+        throw new BadRequestException('برای قطعی‌سازی و ثبت در دفاتر، سند باید ابتدا به تایید حسابدار برسد.');
+      }
 
-    // شماره قطعی بعدی دفتر روزنامه
-    const maxPerm = await this.db.queryOne(
-      'SELECT MAX(permanent_number) as max_p FROM journal_entries WHERE tenant_id = ? AND fiscal_year_id = ?',
-      [tenantId, entry.fiscal_year_id]
-    );
-    const permanentNumber = (maxPerm?.max_p || 0) + 1;
-    const now = new Date().toISOString();
+      await tx.run('SELECT pg_advisory_xact_lock(hashtext($1))', [`tenant:${tenantId}:finalize:${entry.fiscal_year_id}`]);
 
-    await this.db.transaction(async (tx) => {
+      // شماره قطعی بعدی دفتر روزنامه
+      const maxPerm = await tx.queryOne(
+        'SELECT MAX(permanent_number) as max_p FROM journal_entries WHERE tenant_id = ? AND fiscal_year_id = ?',
+        [tenantId, entry.fiscal_year_id]
+      );
+      const permanentNumber = (maxPerm?.max_p || 0) + 1;
+      const now = new Date().toISOString();
+
       await tx.run(
         'UPDATE journal_entries SET status = ?, permanent_number = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
         [JournalEntryStatus.FINALIZED, permanentNumber, now, id, tenantId]
       );
 
-      const prevHash = await this.getLatestAuditHash(tenantId);
+      const prevHash = await this.getLatestAuditHash(tenantId, tx);
       const auditLog = AuditHashChain.createLogEntry(
         randomUUID(),
         tenantId,
@@ -354,9 +358,9 @@ export class JournalEntriesService {
           JSON.stringify(auditLog.payload)
         ]
       );
-    });
 
-    return { ...entry, status: JournalEntryStatus.FINALIZED, permanentNumber };
+      return { ...entry, status: JournalEntryStatus.FINALIZED, permanentNumber };
+    });
   }
 
   async reverseEntry(tenantId: string, id: string, userId: string, reversalDateShamsi: string, reason?: string) {

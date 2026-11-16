@@ -52,7 +52,7 @@ export class EmployeesService {
       `INSERT INTO parties (
         id, tenant_id, company_id, party_type, name, first_name, last_name,
         national_id, is_customer, is_supplier, is_employee, floating_dimension_id, is_active, created_at
-      ) VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', ?, ?, ?, ?, 0, 0, 1, 'dim-cust-1', 1, ?)`,
+      ) VALUES (?, ?, ?, 'INDIVIDUAL_IRANIAN', ?, ?, ?, ?, false, false, true, 'dim-cust-1', true, ?)`,
       [
         partyId,
         tenantId,
@@ -72,7 +72,7 @@ export class EmployeesService {
         first_name, last_name, father_name, birth_date_shamsi, hire_date_shamsi,
         insurance_number, bank_name, bank_account_number, bank_sheba_number,
         department, job_title, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
       [
         employeeId,
         tenantId,
@@ -103,7 +103,7 @@ export class EmployeesService {
         start_date_shamsi, end_date_shamsi, monthly_base_salary,
         monthly_housing_allowance, monthly_grocery_allowance, monthly_seniority_bonus,
         child_count, monthly_child_allowance_per_child, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
       [
         contractId,
         tenantId,
@@ -155,7 +155,7 @@ export class EmployeesService {
     let sql = `
       SELECT e.*, c.monthly_base_salary, c.contract_type
       FROM payroll_employees e
-      LEFT JOIN payroll_contracts c ON c.employee_id = e.id AND c.is_active = 1
+      LEFT JOIN payroll_contracts c ON c.employee_id = e.id AND c.is_active = true
       WHERE e.tenant_id = ? AND e.company_id = ?
     `;
     const params: any[] = [tenantId, companyId];
@@ -166,7 +166,7 @@ export class EmployeesService {
     }
     if (filters?.isActive !== undefined) {
       sql += ' AND e.is_active = ?';
-      params.push(filters.isActive ? 1 : 0);
+      params.push(Boolean(filters.isActive));
     }
 
     sql += ' ORDER BY e.personnel_code ASC';

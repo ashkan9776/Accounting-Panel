@@ -27,7 +27,7 @@ export class DashboardService {
 
     // ۱. استعلام موجودی نقد و بانک جاری (کد ۱۱)
     const cashQuery = await this.db.queryOne(
-      `SELECT SUM(jl.debit - jl.credit) as total_cash
+      `SELECT SUM(jl.debit::NUMERIC - jl.credit::NUMERIC) as total_cash
        FROM journal_lines jl
        JOIN journal_entries je ON jl.journal_entry_id = je.id
        JOIN account_subsidiaries s ON jl.subsidiary_account_id = s.id
@@ -42,8 +42,8 @@ export class DashboardService {
     const salesStats = await this.db.queryOne(
       `SELECT
          COUNT(id) as total_count,
-         SUM(CAST(net_amount AS REAL)) as total_sales,
-         SUM(CAST(cogs_total AS REAL)) as total_cogs
+         SUM(net_amount::NUMERIC) as total_sales,
+         SUM(cogs_total::NUMERIC) as total_cogs
        FROM sales_documents
        WHERE tenant_id = ? AND company_id = ? AND status != 'CANCELLED'`,
       [tenantId, companyId]
@@ -57,7 +57,7 @@ export class DashboardService {
 
     // ۴. استعلام بدهی‌های باز به تامین‌کنندگان
     const payablesQuery = await this.db.queryOne(
-      `SELECT SUM(CAST(grand_total AS REAL)) as total_payables
+      `SELECT SUM(grand_total::NUMERIC) as total_payables
        FROM purchase_documents
        WHERE tenant_id = ? AND company_id = ? AND status != 'CANCELLED'`,
       [tenantId, companyId]
@@ -121,7 +121,7 @@ export class DashboardService {
   async getCashFlowTrend(tenantId: string, companyId: string, asOfDateShamsi: string, days: number = 30): Promise<CashFlowTrendPoint[]> {
     // مانده افتتاحیه بانک و صندوق
     const openingQuery = await this.db.queryOne(
-      `SELECT SUM(jl.debit - jl.credit) as open_cash
+      `SELECT SUM(jl.debit::NUMERIC - jl.credit::NUMERIC) as open_cash
        FROM journal_lines jl
        JOIN journal_entries je ON jl.journal_entry_id = je.id
        JOIN account_subsidiaries s ON jl.subsidiary_account_id = s.id
@@ -135,8 +135,8 @@ export class DashboardService {
     // گردش‌های روزانه نقد و بانک
     const movements = await this.db.query(
       `SELECT je.entry_date_shamsi as date_shamsi,
-              SUM(jl.debit) as inflow,
-              SUM(jl.credit) as outflow
+              SUM(jl.debit::NUMERIC) as inflow,
+              SUM(jl.credit::NUMERIC) as outflow
        FROM journal_lines jl
        JOIN journal_entries je ON jl.journal_entry_id = je.id
        JOIN account_subsidiaries s ON jl.subsidiary_account_id = s.id
@@ -172,9 +172,9 @@ export class DashboardService {
   async getTopSellingProducts(tenantId: string, companyId: string, limit: number = 5): Promise<TopProductSalesKPI[]> {
     const products = await this.db.query(
       `SELECT p.id, p.name as product_title,
-              SUM(CAST(sdi.quantity AS REAL)) as units_sold,
-              SUM(CAST(sdi.net_amount AS REAL)) as total_revenue,
-              SUM(CAST(sdi.total_cogs AS REAL)) as total_cogs
+              SUM(sdi.quantity::NUMERIC) as units_sold,
+              SUM(sdi.net_amount::NUMERIC) as total_revenue,
+              SUM(sdi.total_cogs::NUMERIC) as total_cogs
        FROM sales_document_items sdi
        JOIN sales_documents sd ON sdi.sales_document_id = sd.id
        JOIN products p ON sdi.product_id = p.id
@@ -210,7 +210,7 @@ export class DashboardService {
   ): Promise<FinancialAlertItem[]> {
     // استعلام چک‌های صیادی صادره سررسید آتی
     const chequesQuery = await this.db.queryOne(
-      `SELECT SUM(CAST(amount AS REAL)) as total_cheques
+      `SELECT SUM(amount::NUMERIC) as total_cheques
        FROM cheques
        WHERE tenant_id = ? AND company_id = ? AND cheque_direction = 'PAYABLE'
          AND current_status IN ('AT_HAND', 'IN_CLEARING')`,
@@ -231,7 +231,7 @@ export class DashboardService {
   async getUserWidgets(tenantId: string, userId: string) {
     return this.db.query(
       `SELECT * FROM dashboard_widgets
-       WHERE tenant_id = ? AND user_id = ? AND is_visible = 1
+       WHERE tenant_id = ? AND user_id = ? AND is_visible = true
        ORDER BY position_y ASC, position_x ASC`,
       [tenantId, userId]
     );

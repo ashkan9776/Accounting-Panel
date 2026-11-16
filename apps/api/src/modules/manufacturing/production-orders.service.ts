@@ -63,7 +63,7 @@ export class ProductionOrdersService {
     if (!targetBomId) {
       const defaultBom = await this.db.queryOne(
         `SELECT id FROM manufacturing_boms
-         WHERE tenant_id = ? AND company_id = ? AND product_id = ? AND is_default = 1 AND is_active = 1`,
+         WHERE tenant_id = ? AND company_id = ? AND product_id = ? AND is_default = true AND is_active = true`,
         [tenantId, companyId, data.productId]
       );
       if (!defaultBom) {
@@ -181,7 +181,7 @@ export class ProductionOrdersService {
        FROM manufacturing_order_operations oo
        JOIN manufacturing_work_centers wc ON oo.work_center_id = wc.id
        WHERE oo.production_order_id = ?
-       ORDER BY oo.recorded_date_shamsi ASC, oo.rowid ASC`,
+       ORDER BY oo.recorded_date_shamsi ASC, oo.seq_no ASC`,
       [id]
     );
 
@@ -292,9 +292,9 @@ export class ProductionOrdersService {
       // به‌روزرسانی یا درج در مواد مصرفی سفارش
       await this.db.run(
         `UPDATE manufacturing_order_materials SET
-          actual_issued_quantity = actual_issued_quantity + ?,
+          actual_issued_quantity = (COALESCE(actual_issued_quantity::NUMERIC, 0) + ?::NUMERIC)::TEXT,
           unit_cost = ?,
-          total_cost = total_cost + ?,
+          total_cost = (COALESCE(total_cost::NUMERIC, 0) + ?::NUMERIC)::TEXT,
           stock_issue_id = ?
          WHERE production_order_id = ? AND product_id = ?`,
         [issueQty.toString(), issueResult.cogs.unitCost, issueResult.cogs.totalCogsAmount, stockEntryId, orderId, item.productId]
@@ -536,7 +536,7 @@ export class ProductionOrdersService {
 
       await this.db.run(
         `UPDATE manufacturing_production_orders SET
-          abnormal_scrap_quantity = abnormal_scrap_quantity + ?,
+          abnormal_scrap_quantity = (COALESCE(abnormal_scrap_quantity::NUMERIC, 0) + ?::NUMERIC)::TEXT,
           abnormal_scrap_journal_entry_id = COALESCE(abnormal_scrap_journal_entry_id, ?),
           updated_at = ?
          WHERE id = ?`,
@@ -546,7 +546,7 @@ export class ProductionOrdersService {
       // ضایعات عادی در بهای محصولات جذب می‌شود
       await this.db.run(
         `UPDATE manufacturing_production_orders SET
-          normal_scrap_quantity = normal_scrap_quantity + ?,
+          normal_scrap_quantity = (COALESCE(normal_scrap_quantity::NUMERIC, 0) + ?::NUMERIC)::TEXT,
           updated_at = ?
          WHERE id = ?`,
         [scrapQty.toString(), now, orderId]

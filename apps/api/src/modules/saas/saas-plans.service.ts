@@ -16,7 +16,7 @@ export class SaaSPlansService {
    * دریافت فهرست تمام پلن‌های اشتراک ابری
    */
   async listPlans(): Promise<SaaSPlanDefinition[]> {
-    const rows = await this.db.query<any>(`SELECT * FROM saas_plans WHERE is_active = 1 ORDER BY max_monthly_transactions ASC`);
+    const rows = await this.db.query<any>(`SELECT * FROM saas_plans WHERE is_active = true ORDER BY max_monthly_transactions ASC`);
     return rows.map((r: any) => ({
       id: r.id,
       code: r.code,
@@ -172,7 +172,7 @@ export class SaaSPlansService {
       `INSERT INTO tenant_subscriptions (
         id, organization_id, plan_id, status, started_at, expires_at, auto_renew,
         billing_cycle, payment_reference, created_at, updated_at
-      ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, 1, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, true, ?, ?, ?, ?)`,
       [newSubId, organizationId, newPlanId, now, expiresAt, billingCycle, paymentReference, now, now],
     );
 

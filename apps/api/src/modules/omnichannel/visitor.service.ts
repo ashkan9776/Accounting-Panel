@@ -27,7 +27,7 @@ export class VisitorService {
 
     // استعلام مانده بدهی مشتری از روی دفاتر و اسناد
     const balanceQuery = await this.db.queryOne(
-      `SELECT SUM(CAST(grand_total AS REAL)) as total_invoices
+      `SELECT SUM(grand_total::NUMERIC) as total_invoices
        FROM sales_documents
        WHERE tenant_id = ? AND company_id = ? AND customer_party_id = ?
          AND status != 'CANCELLED' AND payment_method = 'CREDIT'`,

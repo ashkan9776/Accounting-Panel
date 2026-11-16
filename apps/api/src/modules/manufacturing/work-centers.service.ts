@@ -31,7 +31,7 @@ export class WorkCentersService {
       `INSERT INTO manufacturing_work_centers (
         id, tenant_id, company_id, code, name, department,
         capacity_hours_per_day, labor_hourly_rate, overhead_hourly_rate, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
       [
         id,
         tenantId,
@@ -53,7 +53,7 @@ export class WorkCentersService {
   async listWorkCenters(tenantId: string, companyId: string) {
     return this.db.query(
       `SELECT * FROM manufacturing_work_centers
-       WHERE tenant_id = ? AND company_id = ? AND is_active = 1
+       WHERE tenant_id = ? AND company_id = ? AND is_active = true
        ORDER BY code ASC`,
       [tenantId, companyId]
     );

@@ -13,7 +13,7 @@ export class HardwareService {
 
   // ۱. لیست پایانه‌های سخت‌افزاری فعال
   async getTerminals(tenantId: string, companyId: string, branchId?: string) {
-    let sql = 'SELECT * FROM hardware_terminals WHERE tenant_id = ? AND company_id = ? AND is_active = 1';
+    let sql = 'SELECT * FROM hardware_terminals WHERE tenant_id = ? AND company_id = ? AND is_active = true';
     const params: any[] = [tenantId, companyId];
     if (branchId) {
       sql += ' AND branch_id = ?';
@@ -126,7 +126,7 @@ export class HardwareService {
         `INSERT INTO attendance_logs (
           id, tenant_id, company_id, employee_id, terminal_id, log_date_shamsi,
           log_time, log_type, is_processed, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, false, ?)`,
         [id, tenantId, companyId, l.employeeId, l.terminalId, l.dateShamsi, l.timeString, l.type, now]
       );
     }

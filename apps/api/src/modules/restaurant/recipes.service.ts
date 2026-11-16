@@ -25,7 +25,7 @@ export class RecipesService {
       `SELECT r.*, p.name as menu_product_name, p.sell_price as menu_sell_price
        FROM restaurant_recipes r
        JOIN products p ON r.menu_product_id = p.id
-       WHERE r.tenant_id = ? AND r.company_id = ? AND r.is_active = 1`,
+       WHERE r.tenant_id = ? AND r.company_id = ? AND r.is_active = true`,
       [tenantId, companyId]
     );
 
@@ -79,7 +79,7 @@ export class RecipesService {
       `SELECT r.*, p.name as menu_product_name, p.sell_price as menu_sell_price
        FROM restaurant_recipes r
        JOIN products p ON r.menu_product_id = p.id
-       WHERE r.tenant_id = ? AND r.company_id = ? AND r.menu_product_id = ? AND r.is_active = 1`,
+       WHERE r.tenant_id = ? AND r.company_id = ? AND r.menu_product_id = ? AND r.is_active = true`,
       [tenantId, companyId, menuProductId]
     );
 

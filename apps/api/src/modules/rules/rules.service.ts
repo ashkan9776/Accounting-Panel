@@ -11,7 +11,7 @@ export class RulesService {
       `SELECT rv.*, rd.rule_code
        FROM rule_versions rv
        JOIN rule_definitions rd ON rd.id = rv.rule_definition_id
-       WHERE rv.is_active = 1`
+       WHERE rv.is_active = true`
     );
 
     const rules: VersionedRule[] = rows.map((r: any) => ({

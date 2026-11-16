@@ -23,7 +23,7 @@ export class TablesService {
       FROM restaurant_tables t
       JOIN restaurant_sections s ON t.section_id = s.id
       LEFT JOIN restaurant_orders ro ON t.current_order_id = ro.id
-      WHERE t.tenant_id = ? AND t.company_id = ? AND t.branch_id = ? AND t.is_active = 1
+      WHERE t.tenant_id = ? AND t.company_id = ? AND t.branch_id = ? AND t.is_active = true
     `;
     const params: any[] = [tenantId, companyId, branchId];
 

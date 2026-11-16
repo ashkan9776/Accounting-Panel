@@ -4,6 +4,7 @@ import request from 'supertest';
 import Decimal from 'decimal.js';
 import { AppModule } from '../src/app.module';
 import { runSeed } from '../src/database/seed';
+import { DatabaseService } from '../src/database/database.service';
 import { SecurityEngine } from '@accounting/core';
 
 describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲ و فاز ۳)', () => {
@@ -28,13 +29,15 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
   let createdAssetId: string;
 
   beforeAll(async () => {
-    await runSeed();
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule]
     }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
+
+    const db = app.get(DatabaseService);
+    await runSeed(db);
   });
 
   afterAll(async () => {

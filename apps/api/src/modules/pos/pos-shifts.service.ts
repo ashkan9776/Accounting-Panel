@@ -48,7 +48,7 @@ export class PosShiftsService {
     // اعتبارسنجی باز بودن سال مالی و دوره مالی
     const todayShamsi = formatToShamsiString(new Date());
     const activeFy = await this.db.queryOne(
-      `SELECT * FROM fiscal_years WHERE tenant_id = ? AND company_id = ? AND is_closed = 0 AND is_locked = 0 LIMIT 1`,
+      `SELECT * FROM fiscal_years WHERE tenant_id = ? AND company_id = ? AND is_closed = false AND is_locked = false LIMIT 1`,
       [tenantId, companyId]
     );
     if (!activeFy) {
@@ -132,7 +132,7 @@ export class PosShiftsService {
     }
   ) {
     const shift = await this.db.queryOne(
-      'SELECT * FROM pos_shifts WHERE tenant_id = ? AND id = ? AND status = "OPEN"',
+      "SELECT * FROM pos_shifts WHERE tenant_id = ? AND id = ? AND status = 'OPEN'",
       [tenantId, shiftId]
     );
     if (!shift) {

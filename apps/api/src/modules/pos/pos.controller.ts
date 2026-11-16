@@ -155,7 +155,7 @@ export class PosController {
   async listTerminals(@Req() req: Request) {
     const ctx = req.tenantContext!;
     const terminals = await this.db.query(
-      'SELECT * FROM pos_terminals WHERE tenant_id = ? AND company_id = ? AND is_active = 1',
+      'SELECT * FROM pos_terminals WHERE tenant_id = ? AND company_id = ? AND is_active = true',
       [ctx.tenantId, ctx.companyId]
     );
     return { success: true, data: terminals };

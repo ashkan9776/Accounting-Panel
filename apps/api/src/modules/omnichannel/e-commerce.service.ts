@@ -25,7 +25,7 @@ export class ECommerceService {
   // ۰. دریافت فهرست سفارشات آنلاین
   async listOnlineOrders(tenantId: string, companyId: string) {
     const orders = await this.db.query(
-      `SELECT * FROM online_orders WHERE tenant_id = ? AND company_id = ? ORDER BY rowid DESC`,
+      `SELECT * FROM online_orders WHERE tenant_id = ? AND company_id = ? ORDER BY seq_no DESC`,
       [tenantId, companyId]
     );
     return orders;
@@ -406,10 +406,10 @@ export class ECommerceService {
   async syncExternalCatalog(tenantId: string, companyId: string, platform: 'WOOCOMMERCE' | 'DIGIKALA') {
     const products = await this.db.query(
       `SELECT p.id, p.code, p.name, p.sell_price,
-              COALESCE(SUM(CAST(sle.in_quantity AS REAL) - CAST(sle.out_quantity AS REAL)), 0) as stock_quantity
+              COALESCE(SUM(sle.in_quantity::NUMERIC - sle.out_quantity::NUMERIC), 0) as stock_quantity
        FROM products p
        LEFT JOIN stock_ledger_entries sle ON p.id = sle.product_id
-       WHERE p.tenant_id = ? AND p.company_id = ? AND p.is_active = 1
+       WHERE p.tenant_id = ? AND p.company_id = ? AND p.is_active = true
        GROUP BY p.id, p.code, p.name, p.sell_price`,
       [tenantId, companyId]
     );

@@ -119,10 +119,15 @@ export class TaxReportsService {
     const now = new Date().toISOString();
 
     await this.db.run(
-      `INSERT OR REPLACE INTO tax_statutory_reports (
+      `INSERT INTO tax_statutory_reports (
         id, tenant_id, company_id, year_shamsi, quarter, report_type,
         payload_json, net_payable_amount, journal_entry_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, 'VAT_RETURN', ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, 'VAT_RETURN', ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET
+        payload_json = EXCLUDED.payload_json,
+        net_payable_amount = EXCLUDED.net_payable_amount,
+        journal_entry_id = EXCLUDED.journal_entry_id,
+        created_at = EXCLUDED.created_at`,
       [
         reportId,
         tenantId,
@@ -217,7 +222,7 @@ export class TaxReportsService {
   ) {
     // استعلام مجموع درآمدها (کد ۶۱) و هزینه‌ها (کد ۷۱ و ۸۱) سال مالی از دفاتر
     const revenues = await this.db.queryOne(
-      `SELECT SUM(jl.credit - jl.debit) as total_rev
+      `SELECT SUM(jl.credit::NUMERIC - jl.debit::NUMERIC) as total_rev
        FROM journal_lines jl
        JOIN journal_entries je ON jl.journal_entry_id = je.id
        JOIN account_subsidiaries s ON jl.subsidiary_account_id = s.id
@@ -228,7 +233,7 @@ export class TaxReportsService {
     );
 
     const expenses = await this.db.queryOne(
-      `SELECT SUM(jl.debit - jl.credit) as total_exp
+      `SELECT SUM(jl.debit::NUMERIC - jl.credit::NUMERIC) as total_exp
        FROM journal_lines jl
        JOIN journal_entries je ON jl.journal_entry_id = je.id
        JOIN account_subsidiaries s ON jl.subsidiary_account_id = s.id
@@ -273,10 +278,15 @@ export class TaxReportsService {
     const now = new Date().toISOString();
 
     await this.db.run(
-      `INSERT OR REPLACE INTO tax_statutory_reports (
+      `INSERT INTO tax_statutory_reports (
         id, tenant_id, company_id, year_shamsi, quarter, report_type,
         payload_json, net_payable_amount, journal_entry_id, created_at
-      ) VALUES (?, ?, ?, ?, NULL, 'CORPORATE_TAX', ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, NULL, 'CORPORATE_TAX', ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET
+        payload_json = EXCLUDED.payload_json,
+        net_payable_amount = EXCLUDED.net_payable_amount,
+        journal_entry_id = EXCLUDED.journal_entry_id,
+        created_at = EXCLUDED.created_at`,
       [
         reportId,
         tenantId,

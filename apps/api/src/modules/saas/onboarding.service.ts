@@ -41,7 +41,7 @@ export class OnboardingService {
       // ۲. ایجاد Tenant و Company
       await tx.run(
         `INSERT INTO tenants (id, name, subdomain, is_active, created_at)
-         VALUES (?, ?, ?, 1, ?)`,
+         VALUES (?, ?, ?, true, ?)`,
         [tenantId, input.organizationName, subdomain, now],
       );
 
@@ -65,30 +65,30 @@ export class OnboardingService {
       // ۳. ایجاد شعبه مرکزی و انبار پیش‌فرض
       await tx.run(
         `INSERT INTO branches (id, tenant_id, company_id, code, name, is_central, created_at)
-         VALUES (?, ?, ?, '001', 'دفتر مرکزی', 1, ?)`,
+         VALUES (?, ?, ?, '001', 'دفتر مرکزی', true, ?)`,
         [branchId, tenantId, companyId, now],
       );
 
       await tx.run(
         `INSERT INTO warehouses (id, tenant_id, company_id, branch_id, code, name, is_active, created_at)
-         VALUES (?, ?, ?, ?, 'WH-MAIN', 'انبار مرکزی', 1, ?)`,
+         VALUES (?, ?, ?, ?, 'WH-MAIN', 'انبار مرکزی', true, ?)`,
         [warehouseId, tenantId, companyId, branchId, now],
       );
 
       // ۳.۱. ایجاد واحدهای سنجش پیش‌فرض (عدد، کیلوگرم، بسته)
       await tx.run(
-        `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
-         VALUES (?, ?, ?, 'PCS', 'دستگاه / عدد', 'عدد', 1, ?)`,
+        `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+         VALUES (?, ?, ?, 'PCS', 'دستگاه / عدد', 'عدد', true, ?) ON CONFLICT DO NOTHING`,
         [`unit-piece-${tenantId}`, tenantId, companyId, now],
       );
       await tx.run(
-        `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
-         VALUES (?, ?, ?, 'KG', 'کیلوگرم', 'کیلو', 0, ?)`,
+        `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+         VALUES (?, ?, ?, 'KG', 'کیلوگرم', 'کیلو', false, ?) ON CONFLICT DO NOTHING`,
         [`unit-kg-${tenantId}`, tenantId, companyId, now],
       );
       await tx.run(
-        `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
-         VALUES (?, ?, ?, 'BOX', 'بسته / کارتن', 'بسته', 0, ?)`,
+        `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+         VALUES (?, ?, ?, 'BOX', 'بسته / کارتن', 'بسته', false, ?) ON CONFLICT DO NOTHING`,
         [`unit-box-${tenantId}`, tenantId, companyId, now],
       );
 
@@ -97,7 +97,7 @@ export class OnboardingService {
         `INSERT INTO fiscal_years (
           id, tenant_id, company_id, title, start_date_shamsi, end_date_shamsi,
           start_date_gregorian, end_date_gregorian, is_closed, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, '2025-03-21', '2026-03-20', 0, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, '2025-03-21', '2026-03-20', false, ?)`,
         [
           fiscalYearId,
           tenantId,
@@ -114,7 +114,7 @@ export class OnboardingService {
       await tx.run(
         `INSERT INTO users (
           id, tenant_id, mobile, email, password_hash, full_name, is_super_admin, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, true, true, ?)`,
         [
           adminUserId,
           tenantId,
@@ -138,12 +138,12 @@ export class OnboardingService {
         const roleId = `role-${tenantId}-${r.code.toLowerCase()}`;
         if (r.code === 'ADMIN') adminRoleId = roleId;
         await tx.run(
-          `INSERT OR IGNORE INTO roles (id, tenant_id, code, title, description) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO roles (id, tenant_id, code, title, description) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
           [roleId, tenantId, `${r.code}_${tenantId}`, r.title, `نقش ${r.title} در سازمان`],
         );
       }
       await tx.run(
-        `INSERT OR IGNORE INTO user_roles (user_id, role_id, branch_id) VALUES (?, ?, ?)`,
+        `INSERT INTO user_roles (user_id, role_id, branch_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
         [adminUserId, adminRoleId, branchId],
       );
 
@@ -151,8 +151,8 @@ export class OnboardingService {
       for (const g of STANDARD_IRANIAN_GROUPS) {
         const grpId = `group-${tenantId}-${g.code}`;
         await tx.run(
-          `INSERT OR IGNORE INTO account_groups (id, tenant_id, company_id, code, title, nature, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO account_groups (id, tenant_id, company_id, code, title, nature, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
           [grpId, tenantId, companyId, g.code, g.title, g.nature, g.description || ''],
         );
       }
@@ -161,8 +161,8 @@ export class OnboardingService {
         const headId = `head-${tenantId}-${h.code}`;
         const grpId = `group-${tenantId}-${h.code.charAt(0)}`;
         await tx.run(
-          `INSERT OR IGNORE INTO account_heads (id, tenant_id, company_id, group_id, code, title, nature, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO account_heads (id, tenant_id, company_id, group_id, code, title, nature, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
           [headId, tenantId, companyId, grpId, h.code, h.title, h.nature, h.description || ''],
         );
       }
@@ -176,10 +176,10 @@ export class OnboardingService {
           const headId = `head-${tenantId}-${headCode}`;
 
           await tx.run(
-            `INSERT OR IGNORE INTO account_subsidiaries (
+            `INSERT INTO account_subsidiaries (
               id, tenant_id, company_id, head_id, code, title, nature,
               requires_floating_dimension_1, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, false, true) ON CONFLICT DO NOTHING`,
             [subId, tenantId, companyId, headId, acc.code, acc.name, acc.nature],
           );
           accountsInserted++;
@@ -199,7 +199,7 @@ export class OnboardingService {
           trialSub.status,
           trialSub.startedAt,
           trialSub.expiresAt,
-          trialSub.autoRenew ? 1 : 0,
+          Boolean(trialSub.autoRenew),
           trialSub.billingCycle,
           now,
           now,

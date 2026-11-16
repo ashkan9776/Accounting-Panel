@@ -51,7 +51,7 @@ export class ChartOfAccountsService {
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO floating_dimensions (id, tenant_id, company_id, dimension_type, code, title, reference_id, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, true, ?)`,
       [id, tenantId, companyId, dimensionType, code, title, referenceId || null, now]
     );
     return { id, code, title, dimensionType };

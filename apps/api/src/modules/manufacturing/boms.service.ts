@@ -63,7 +63,7 @@ export class BomsService {
     // غیرفعال کردن پیش‌فرض‌های قبلی محصول در صورت تعیین به عنوان پیش‌فرض
     if (data.isDefault) {
       await this.db.run(
-        `UPDATE manufacturing_boms SET is_default = 0 WHERE tenant_id = ? AND company_id = ? AND product_id = ?`,
+        `UPDATE manufacturing_boms SET is_default = false WHERE tenant_id = ? AND company_id = ? AND product_id = ?`,
         [tenantId, companyId, data.productId]
       );
     }
@@ -74,7 +74,7 @@ export class BomsService {
         base_quantity, is_default, is_active,
         standard_material_cost, standard_labor_cost, standard_overhead_cost, standard_total_cost,
         description, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '0', '0', '0', '0', ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, '0', '0', '0', '0', ?, ?, ?)`,
       [
         bomId,
         tenantId,
@@ -84,7 +84,7 @@ export class BomsService {
         data.bomName,
         data.version || '1.0',
         data.baseQuantity ? data.baseQuantity.toString() : '1',
-        data.isDefault ? 1 : 0,
+        Boolean(data.isDefault),
         data.description || null,
         now,
         now
@@ -190,7 +190,7 @@ export class BomsService {
       SELECT b.*, p.name as product_name, p.code as product_code
       FROM manufacturing_boms b
       JOIN products p ON b.product_id = p.id
-      WHERE b.tenant_id = ? AND b.company_id = ? AND b.is_active = 1
+      WHERE b.tenant_id = ? AND b.company_id = ? AND b.is_active = true
     `;
     const params: any[] = [tenantId, companyId];
 

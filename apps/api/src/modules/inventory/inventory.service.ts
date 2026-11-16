@@ -90,7 +90,7 @@ export class InventoryService {
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
       [id, tenantId, companyId, branchId, data.code, data.name, data.address || null, data.phone || null, data.keeperName || null, now]
     );
     return { id, ...data };
@@ -180,8 +180,8 @@ export class InventoryService {
     if (!existingUnit) {
       resolvedUnitId = `unit-piece-${tenantId}`;
       await this.db.run(
-        `INSERT OR IGNORE INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
-         VALUES (?, ?, ?, 'PCS', 'دستگاه / عدد', 'عدد', 1, ?)`,
+        `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
+         VALUES (?, ?, ?, 'PCS', 'دستگاه / عدد', 'عدد', true, ?) ON CONFLICT DO NOTHING`,
         [resolvedUnitId, tenantId, companyId, now]
       );
     } else {
@@ -193,7 +193,7 @@ export class InventoryService {
         id, tenant_id, company_id, category_id, unit_id, code, name, type,
         barcode, tax_exempt, vat_rate, valuation_method, min_stock_alert, max_stock_alert,
         sell_price, purchase_price, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?)`,
       [
         id,
         tenantId,
@@ -204,7 +204,7 @@ export class InventoryService {
         data.name,
         data.type || ProductType.GOODS,
         data.barcode || null,
-        data.taxExempt ? 1 : 0,
+        Boolean(data.taxExempt),
         data.vatRate ? data.vatRate.toString() : '0.10',
         data.valuationMethod || ValuationMethod.MOVING_AVERAGE,
         data.minStockAlert ? data.minStockAlert.toString() : '0',
@@ -227,7 +227,7 @@ export class InventoryService {
     const latest = await this.db.queryOne(
       `SELECT * FROM stock_ledger_entries
        WHERE tenant_id = ? AND company_id = ? AND warehouse_id = ? AND product_id = ?
-       ORDER BY rowid DESC LIMIT 1`,
+       ORDER BY seq_no DESC LIMIT 1`,
       [tenantId, companyId, warehouseId, productId]
     );
 
@@ -279,41 +279,47 @@ export class InventoryService {
   ) {
     const id = randomUUID();
     const now = new Date().toISOString();
-    await this.db.run(
-      `INSERT INTO stock_ledger_entries (
-        id, tenant_id, company_id, warehouse_id, product_id, variant_id,
-        document_type, document_id, document_number, date_shamsi,
-        in_quantity, in_unit_cost, in_total_cost,
-        out_quantity, out_unit_cost, out_total_cost,
-        balance_quantity, balance_unit_cost, balance_total_cost,
-        fifo_layers_json, journal_entry_id, description, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        tenantId,
-        companyId,
-        data.warehouseId,
-        data.productId,
-        data.variantId || null,
-        data.documentType,
-        data.documentId,
-        data.documentNumber,
-        data.dateShamsi,
-        data.inQuantity ? data.inQuantity.toString() : '0',
-        data.inUnitCost ? data.inUnitCost.toString() : '0',
-        data.inTotalCost ? data.inTotalCost.toString() : '0',
-        data.outQuantity ? data.outQuantity.toString() : '0',
-        data.outUnitCost ? data.outUnitCost.toString() : '0',
-        data.outTotalCost ? data.outTotalCost.toString() : '0',
-        data.balanceQuantity.toString(),
-        data.balanceUnitCost.toString(),
-        data.balanceTotalCost.toString(),
-        data.fifoLayers ? JSON.stringify(data.fifoLayers) : null,
-        data.journalEntryId || null,
-        data.description || null,
-        now
-      ]
-    );
+    return await this.db.transaction(async (tx) => {
+      await tx.run('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `stock:${tenantId}:${data.warehouseId}:${data.productId}`
+      ]);
+      await tx.run(
+        `INSERT INTO stock_ledger_entries (
+          id, tenant_id, company_id, warehouse_id, product_id, variant_id,
+          document_type, document_id, document_number, date_shamsi,
+          in_quantity, in_unit_cost, in_total_cost,
+          out_quantity, out_unit_cost, out_total_cost,
+          balance_quantity, balance_unit_cost, balance_total_cost,
+          fifo_layers_json, journal_entry_id, description, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          tenantId,
+          companyId,
+          data.warehouseId,
+          data.productId,
+          data.variantId || null,
+          data.documentType,
+          data.documentId,
+          data.documentNumber,
+          data.dateShamsi,
+          data.inQuantity ? data.inQuantity.toString() : '0',
+          data.inUnitCost ? data.inUnitCost.toString() : '0',
+          data.inTotalCost ? data.inTotalCost.toString() : '0',
+          data.outQuantity ? data.outQuantity.toString() : '0',
+          data.outUnitCost ? data.outUnitCost.toString() : '0',
+          data.outTotalCost ? data.outTotalCost.toString() : '0',
+          data.balanceQuantity.toString(),
+          data.balanceUnitCost.toString(),
+          data.balanceTotalCost.toString(),
+          data.fifoLayers ? JSON.stringify(data.fifoLayers) : null,
+          data.journalEntryId || null,
+          data.description || null,
+          now
+        ]
+      );
+      return { id };
+    });
     return id;
   }
 
@@ -321,7 +327,7 @@ export class InventoryService {
     return this.db.query(
       `SELECT * FROM stock_ledger_entries
        WHERE tenant_id = ? AND company_id = ? AND warehouse_id = ? AND product_id = ?
-       ORDER BY date_shamsi ASC, rowid ASC`,
+       ORDER BY date_shamsi ASC, seq_no ASC`,
       [tenantId, companyId, warehouseId, productId]
     );
   }
@@ -336,11 +342,11 @@ export class InventoryService {
       LEFT JOIN (
         SELECT s1.* FROM stock_ledger_entries s1
         JOIN (
-          SELECT warehouse_id, product_id, MAX(rowid) as max_rowid
+          SELECT warehouse_id, product_id, MAX(seq_no) as max_seq_no
           FROM stock_ledger_entries
           WHERE tenant_id = ? AND company_id = ?
           GROUP BY warehouse_id, product_id
-        ) s2 ON s1.rowid = s2.max_rowid
+        ) s2 ON s1.seq_no = s2.max_seq_no
       ) sle ON sle.product_id = p.id AND sle.warehouse_id = w.id
       LEFT JOIN product_units u ON p.unit_id = u.id
       WHERE p.tenant_id = ? AND p.company_id = ? AND p.type = 'GOODS'
