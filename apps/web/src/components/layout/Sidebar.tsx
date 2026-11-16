@@ -17,6 +17,7 @@ import {
   Building2,
   Settings,
   Sparkles,
+  Wallet,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -24,6 +25,16 @@ const MENU_ITEMS = [
     title: 'داشبورد مدیریتی',
     href: '/dashboard',
     icon: LayoutDashboard,
+  },
+  {
+    title: 'خزانه‌داری و چک صیاد',
+    icon: Wallet,
+    items: [
+      { title: 'کارتابل چک‌های صیادی', href: '/treasury/cheques' },
+      { title: 'دریافت و پرداخت وجوه', href: '/treasury/receipts' },
+      { title: 'انتقال وجه بین حساب‌ها', href: '/treasury/transfers' },
+      { title: 'بانک‌ها و صندوق‌ها', href: '/treasury/banks' },
+    ],
   },
   {
     title: 'حسابداری دوبل',

@@ -10,7 +10,9 @@ import {
   AlertCircle,
   Building,
   Phone,
+  FileText,
 } from 'lucide-react';
+import Link from 'next/link';
 import { fetchApi, formatMoney } from '../../../lib/api';
 
 export default function CustomersPage() {
@@ -240,6 +242,7 @@ export default function CustomersPage() {
                 <th className="py-2.5 px-3 w-32 text-center">موبایل</th>
                 <th className="py-2.5 px-3 w-36 text-left">سقف اعتبار (ریال)</th>
                 <th className="py-2.5 px-3 w-28 text-center">نوع</th>
+                <th className="py-2.5 px-3 w-32 text-center">عملیات مالی</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -261,11 +264,20 @@ export default function CustomersPage() {
                       {c.party_type === 'LEGAL' ? 'حقوقی' : 'حقیقی'}
                     </span>
                   </td>
+                  <td className="py-3 px-3 text-center">
+                    <Link
+                      href={`/sales/customers/${c.id}`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>صورت‌حساب</span>
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {parties.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     مشتری یافت نشد. برای صدور فاکتور، یک طرف‌حساب جدید اضافه کنید.
                   </td>
                 </tr>
