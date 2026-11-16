@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.next/
 storage/*.db
 storage/*.db-journal
 *.log
