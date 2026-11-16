@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import {
@@ -86,7 +87,7 @@ export class ECommerceService {
       data.couponDiscount || '0'
     );
 
-    const orderId = `ord-online-${Date.now()}`;
+    const orderId = randomUUID();
     const orderNumber = `ORD-1403-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date().toISOString();
 
@@ -119,7 +120,7 @@ export class ECommerceService {
       );
 
       for (const item of pricing.itemsBreakdown) {
-        const itemId = `ord-item-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        const itemId = randomUUID();
         await tx.run(
           `INSERT INTO online_order_items (
             id, online_order_id, product_id, quantity, unit_price, discount_amount,
@@ -180,7 +181,7 @@ export class ECommerceService {
       throw new BadRequestException('این سفارش در وضعیت معلق قرار ندارد و امکان پرداخت مجدد ندارد.');
     }
 
-    const txId = `tx-ipg-${Date.now()}`;
+    const txId = randomUUID();
     const token = `SHAPARAK-${Math.random().toString(36).substring(2, 12).toUpperCase()}`;
     const now = new Date().toISOString();
 
@@ -275,7 +276,7 @@ export class ECommerceService {
     journalEntry.status = JournalEntryStatus.APPROVED;
 
     // ثبت فاکتور رسمی فروش در سیستم فروش
-    const salesDocId = `sales-online-${Date.now()}`;
+    const salesDocId = randomUUID();
     await this.db.run(
       `INSERT INTO sales_documents (
         id, tenant_id, company_id, branch_id, warehouse_id, customer_party_id,

@@ -198,6 +198,23 @@ export async function runSeed() {
     [userId, roleAdminId, branchId]
   );
 
+  const permissionsList = [
+    { id: 'perm-acc-write', code: 'ACCOUNTING_WRITE', title: 'ثبت اسناد دوبل', module: 'ACCOUNTING' },
+    { id: 'perm-acc-close', code: 'ACCOUNTING_CLOSE', title: 'بستن حساب‌ها و دوره مالی', module: 'ACCOUNTING' },
+    { id: 'perm-payroll-manage', code: 'PAYROLL_MANAGE', title: 'مدیریت و تایید حقوق و دستمزد', module: 'PAYROLL' },
+    { id: 'perm-saas-admin', code: 'SAAS_ADMIN', title: 'مدیریت اشتراک و سهمیه‌ها', module: 'SAAS' },
+  ];
+  for (const perm of permissionsList) {
+    await run(
+      `INSERT OR REPLACE INTO permissions (id, code, module, title) VALUES (?, ?, ?, ?)`,
+      [perm.id, perm.code, perm.module, perm.title],
+    );
+    await run(
+      `INSERT OR REPLACE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`,
+      [roleAdminId, perm.id],
+    );
+  }
+
   // ۷. درخت کدینگ حساب‌های استاندارد ایران
   console.log('[Seed] Seeding Chart of Accounts...');
   for (const g of STANDARD_IRANIAN_GROUPS) {

@@ -56,14 +56,23 @@ export class JournalEngine {
         throw new Error(`ردیف ${rowNum}: یک آرتیکل نمی‌تواند هم‌زمان دارای مبلغ بدهکار و بستانکار باشد.`);
       }
 
-      // بررسی تفصیلی اجباری معین
-      if (subsidiariesMap && subsidiariesMap.has(line.subsidiaryAccountId)) {
+      // بررسی معتبر بودن حساب معین، وضعیت فعال بودن و ابعاد تفصیلی اجباری
+      if (subsidiariesMap) {
+        if (!subsidiariesMap.has(line.subsidiaryAccountId)) {
+          throw new Error(`ردیف ${rowNum}: حساب معین با شناسه «${line.subsidiaryAccountId}» یافت نشد.`);
+        }
         const sub = subsidiariesMap.get(line.subsidiaryAccountId)!;
+        if (sub.isActive === false) {
+          throw new Error(`ردیف ${rowNum}: حساب معین «${sub.title}» غیرفعال است و امکان گردش ندارد.`);
+        }
         if (sub.requiresFloatingDimension1 && !line.floatingDimension1Id) {
           throw new Error(`ردیف ${rowNum}: حساب معین «${sub.title}» نیازمند تفصیلی شناور بعد ۱ می‌باشد.`);
         }
         if (sub.requiresFloatingDimension2 && !line.floatingDimension2Id) {
           throw new Error(`ردیف ${rowNum}: حساب معین «${sub.title}» نیازمند تفصیلی شناور بعد ۲ (مرکز هزینه/پروژه) می‌باشد.`);
+        }
+        if (sub.requiresFloatingDimension3 && !line.floatingDimension3Id) {
+          throw new Error(`ردیف ${rowNum}: حساب معین «${sub.title}» نیازمند تفصیلی شناور بعد ۳ می‌باشد.`);
         }
       }
 

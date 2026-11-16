@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { JournalEntry, JournalEntryStatus } from '../journal/types';
+import { JournalEntry, JournalEntryStatus, JournalEntryType } from '../journal/types';
 import { AccountSubsidiary, AccountHead, AccountGroup } from '../chart-of-accounts/types';
 
 Decimal.set({ precision: 28, rounding: Decimal.ROUND_HALF_UP });
@@ -47,41 +47,80 @@ export class TrialBalanceEngine {
     heads: AccountHead[],
     groups: AccountGroup[],
     level: 'SUBSIDIARY' | 'HEAD' | 'GROUP' = 'SUBSIDIARY',
-    onlyFinalizedOrApproved: boolean = true
+    onlyFinalizedOrApproved: boolean = true,
+    options?: {
+      fromDateShamsi?: string;
+      toDateShamsi?: string;
+    }
   ): TrialBalanceReport {
     // نقشه کمکی برای دسترسی سریع به اطلاعات حساب‌ها
     const subMap = new Map<string, AccountSubsidiary>(subsidiaries.map(s => [s.id, s]));
     const headMap = new Map<string, AccountHead>(heads.map(h => [h.id, h]));
     const grpMap = new Map<string, AccountGroup>(groups.map(g => [g.id, g]));
 
-    // جمع‌آوری گردش‌های هر معین
-    const debitMap = new Map<string, Decimal>();
-    const creditMap = new Map<string, Decimal>();
+    // جمع‌آوری گردش‌های هر معین تفکیک شده به افتتاحیه و طی دوره
+    const openDebitMap = new Map<string, Decimal>();
+    const openCreditMap = new Map<string, Decimal>();
+    const periodDebitMap = new Map<string, Decimal>();
+    const periodCreditMap = new Map<string, Decimal>();
 
     for (const entry of entries) {
       if (onlyFinalizedOrApproved) {
-        if (entry.status !== JournalEntryStatus.APPROVED && entry.status !== JournalEntryStatus.FINALIZED) {
+        if (
+          entry.status !== JournalEntryStatus.APPROVED &&
+          entry.status !== JournalEntryStatus.FINALIZED &&
+          entry.status !== JournalEntryStatus.REVERSED
+        ) {
           continue;
         }
       }
 
-      for (const line of entry.lines) {
-        const curDebit = debitMap.get(line.subsidiaryAccountId) || new Decimal(0);
-        const curCredit = creditMap.get(line.subsidiaryAccountId) || new Decimal(0);
+      if (options?.toDateShamsi && entry.entryDateShamsi > options.toDateShamsi) {
+        continue;
+      }
 
-        debitMap.set(line.subsidiaryAccountId, curDebit.plus(new Decimal(line.debit)));
-        creditMap.set(line.subsidiaryAccountId, curCredit.plus(new Decimal(line.credit)));
+      const isOpening =
+        entry.entryType === JournalEntryType.OPENING ||
+        Boolean(options?.fromDateShamsi && entry.entryDateShamsi < options.fromDateShamsi);
+
+      for (const line of entry.lines) {
+        const d = new Decimal(line.debit || 0);
+        const c = new Decimal(line.credit || 0);
+
+        if (isOpening) {
+          const curD = openDebitMap.get(line.subsidiaryAccountId) || new Decimal(0);
+          const curC = openCreditMap.get(line.subsidiaryAccountId) || new Decimal(0);
+          openDebitMap.set(line.subsidiaryAccountId, curD.plus(d));
+          openCreditMap.set(line.subsidiaryAccountId, curC.plus(c));
+        } else {
+          const curD = periodDebitMap.get(line.subsidiaryAccountId) || new Decimal(0);
+          const curC = periodCreditMap.get(line.subsidiaryAccountId) || new Decimal(0);
+          periodDebitMap.set(line.subsidiaryAccountId, curD.plus(d));
+          periodCreditMap.set(line.subsidiaryAccountId, curC.plus(c));
+        }
       }
     }
 
-    const rowsMap = new Map<string, { code: string; title: string; debit: Decimal; credit: Decimal }>();
+    const rowsMap = new Map<
+      string,
+      {
+        code: string;
+        title: string;
+        openDebit: Decimal;
+        openCredit: Decimal;
+        periodDebit: Decimal;
+        periodCredit: Decimal;
+      }
+    >();
 
     for (const sub of subsidiaries) {
-      const d = debitMap.get(sub.id) || new Decimal(0);
-      const c = creditMap.get(sub.id) || new Decimal(0);
+      const od = openDebitMap.get(sub.id) || new Decimal(0);
+      const oc = openCreditMap.get(sub.id) || new Decimal(0);
+      const pd = periodDebitMap.get(sub.id) || new Decimal(0);
+      const pc = periodCreditMap.get(sub.id) || new Decimal(0);
 
-      // در صورت نبود هیچ گردش، در تراز معین درج نمی‌شود مگر اینکه مانده داشته باشد
-      if (d.isZero() && c.isZero()) continue;
+      // در صورت نبود هیچ گردش، در تراز درج نمی‌شود
+      if (od.isZero() && oc.isZero() && pd.isZero() && pc.isZero()) continue;
 
       let key = sub.id;
       let code = sub.code;
@@ -104,14 +143,27 @@ export class TrialBalanceEngine {
         }
       }
 
-      const existing = rowsMap.get(key) || { code, title, debit: new Decimal(0), credit: new Decimal(0) };
-      existing.debit = existing.debit.plus(d);
-      existing.credit = existing.credit.plus(c);
+      const existing = rowsMap.get(key) || {
+        code,
+        title,
+        openDebit: new Decimal(0),
+        openCredit: new Decimal(0),
+        periodDebit: new Decimal(0),
+        periodCredit: new Decimal(0)
+      };
+      existing.openDebit = existing.openDebit.plus(od);
+      existing.openCredit = existing.openCredit.plus(oc);
+      existing.periodDebit = existing.periodDebit.plus(pd);
+      existing.periodCredit = existing.periodCredit.plus(pc);
       rowsMap.set(key, existing);
     }
 
+    let sumOpenDebit = new Decimal(0);
+    let sumOpenCredit = new Decimal(0);
     let sumPeriodDebit = new Decimal(0);
     let sumPeriodCredit = new Decimal(0);
+    let sumTotalDebit = new Decimal(0);
+    let sumTotalCredit = new Decimal(0);
     let sumClosingDebit = new Decimal(0);
     let sumClosingCredit = new Decimal(0);
 
@@ -121,47 +173,70 @@ export class TrialBalanceEngine {
     const sorted = Array.from(rowsMap.values()).sort((a, b) => a.code.localeCompare(b.code));
 
     for (const item of sorted) {
-      sumPeriodDebit = sumPeriodDebit.plus(item.debit);
-      sumPeriodCredit = sumPeriodCredit.plus(item.credit);
+      let openDebit = new Decimal(0);
+      let openCredit = new Decimal(0);
+      if (item.openDebit.greaterThan(item.openCredit)) {
+        openDebit = item.openDebit.minus(item.openCredit);
+      } else if (item.openCredit.greaterThan(item.openDebit)) {
+        openCredit = item.openCredit.minus(item.openDebit);
+      }
+
+      const pDebit = item.periodDebit;
+      const pCredit = item.periodCredit;
+
+      const totDebit = openDebit.plus(pDebit);
+      const totCredit = openCredit.plus(pCredit);
 
       let closeDebit = new Decimal(0);
       let closeCredit = new Decimal(0);
 
-      if (item.debit.greaterThan(item.credit)) {
-        closeDebit = item.debit.minus(item.credit);
-      } else if (item.credit.greaterThan(item.debit)) {
-        closeCredit = item.credit.minus(item.debit);
+      if (totDebit.greaterThan(totCredit)) {
+        closeDebit = totDebit.minus(totCredit);
+      } else if (totCredit.greaterThan(totDebit)) {
+        closeCredit = totCredit.minus(totDebit);
       }
 
+      sumOpenDebit = sumOpenDebit.plus(openDebit);
+      sumOpenCredit = sumOpenCredit.plus(openCredit);
+      sumPeriodDebit = sumPeriodDebit.plus(pDebit);
+      sumPeriodCredit = sumPeriodCredit.plus(pCredit);
+      sumTotalDebit = sumTotalDebit.plus(totDebit);
+      sumTotalCredit = sumTotalCredit.plus(totCredit);
       sumClosingDebit = sumClosingDebit.plus(closeDebit);
       sumClosingCredit = sumClosingCredit.plus(closeCredit);
 
       rows.push({
         accountCode: item.code,
         accountTitle: item.title,
-        openingDebit: '0',
-        openingCredit: '0',
-        periodDebit: item.debit.toFixed(0),
-        periodCredit: item.credit.toFixed(0),
-        totalDebit: item.debit.toFixed(0),
-        totalCredit: item.credit.toFixed(0),
+        openingDebit: openDebit.toFixed(0),
+        openingCredit: openCredit.toFixed(0),
+        periodDebit: pDebit.toFixed(0),
+        periodCredit: pCredit.toFixed(0),
+        totalDebit: totDebit.toFixed(0),
+        totalCredit: totCredit.toFixed(0),
         closingDebit: closeDebit.toFixed(0),
         closingCredit: closeCredit.toFixed(0)
       });
     }
 
     // بررسی توازن ستون‌ها
-    const isBalanced = sumPeriodDebit.equals(sumPeriodCredit) && sumClosingDebit.equals(sumClosingCredit);
+    const isBalanced =
+      sumOpenDebit.equals(sumOpenCredit) &&
+      sumPeriodDebit.equals(sumPeriodCredit) &&
+      sumTotalDebit.equals(sumTotalCredit) &&
+      sumClosingDebit.equals(sumClosingCredit);
 
     return {
       level,
+      fromDateShamsi: options?.fromDateShamsi,
+      toDateShamsi: options?.toDateShamsi,
       rows,
-      totalOpeningDebit: '0',
-      totalOpeningCredit: '0',
+      totalOpeningDebit: sumOpenDebit.toFixed(0),
+      totalOpeningCredit: sumOpenCredit.toFixed(0),
       totalPeriodDebit: sumPeriodDebit.toFixed(0),
       totalPeriodCredit: sumPeriodCredit.toFixed(0),
-      totalDebitSum: sumPeriodDebit.toFixed(0),
-      totalCreditSum: sumPeriodCredit.toFixed(0),
+      totalDebitSum: sumTotalDebit.toFixed(0),
+      totalCreditSum: sumTotalCredit.toFixed(0),
       totalClosingDebit: sumClosingDebit.toFixed(0),
       totalClosingCredit: sumClosingCredit.toFixed(0),
       isBalanced

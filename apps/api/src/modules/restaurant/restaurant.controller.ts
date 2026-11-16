@@ -69,6 +69,13 @@ export class RestaurantController {
   }
 
   // ۲. منو، دستور پخت و Food Cost
+  @Get('recipes')
+  async listRecipes(@Req() req: Request) {
+    const ctx = req.tenantContext!;
+    const recipes = await this.recipesService.listRecipes(ctx.tenantId, ctx.companyId);
+    return { success: true, data: recipes };
+  }
+
   @Get('recipes/:productId')
   async getRecipe(@Req() req: Request, @Param('productId') productId: string) {
     const ctx = req.tenantContext!;

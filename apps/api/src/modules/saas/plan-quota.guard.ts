@@ -14,7 +14,8 @@ export class PlanQuotaGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
-    if (!user || !user.tenantId) {
+    const tenantId = user?.tenant_id || user?.tenantId;
+    if (!user || !tenantId) {
       return true;
     }
 
@@ -25,7 +26,7 @@ export class PlanQuotaGuard implements CanActivate {
        JOIN saas_plans p ON s.plan_id = p.id
        WHERE s.organization_id = ?
        ORDER BY s.created_at DESC LIMIT 1`,
-      [user.tenantId],
+      [tenantId],
     );
 
     if (!subRow) {

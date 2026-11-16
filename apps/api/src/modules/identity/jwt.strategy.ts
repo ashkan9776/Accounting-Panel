@@ -25,7 +25,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('کاربر نامعتبر است یا حساب کاربری غیرفعال شده است.');
     }
 
-    // واکشی نقش‌های کاربر
+    // واکشی نقش‌ها و دسترسی‌های کاربر
     const roles = await this.db.query(
       `SELECT r.code FROM roles r
        JOIN user_roles ur ON ur.role_id = r.id
@@ -33,9 +33,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       [user.id]
     );
 
+    const permissions = await this.db.query(
+      `SELECT DISTINCT p.code FROM permissions p
+       JOIN role_permissions rp ON rp.permission_id = p.id
+       JOIN user_roles ur ON ur.role_id = rp.role_id
+       WHERE ur.user_id = ?`,
+      [user.id]
+    );
+
     return {
       ...user,
-      roles: roles.map((r: any) => r.code)
+      tenantId: user.tenant_id,
+      roles: roles.map((r: any) => r.code),
+      permissions: permissions.map((p: any) => p.code),
     };
   }
 }

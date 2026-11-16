@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import Decimal from 'decimal.js';
 import {
@@ -52,7 +53,7 @@ export class PartiesService {
       }
     }
 
-    const partyId = `party-${Date.now()}`;
+    const partyId = randomUUID();
     const now = new Date().toISOString();
 
     // ۲. ایجاد خودکار تفصیلی شناور در جدول floating_dimensions
@@ -61,7 +62,7 @@ export class PartiesService {
       [tenantId]
     );
     const nextDimCode = ((maxCodeRow?.max_code || 100000) + 1).toString();
-    const floatingDimId = `dim-party-${Date.now()}`;
+    const floatingDimId = randomUUID();
 
     await this.db.transaction(async (tx) => {
       // ایجاد تفصیلی شناور

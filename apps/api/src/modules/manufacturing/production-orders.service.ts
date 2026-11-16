@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -85,7 +86,7 @@ export class ProductionOrdersService {
     const orderIndex = ((countRow?.cnt || 0) + 1).toString().padStart(4, '0');
     const orderNumber = `MO-${data.dateShamsi.substring(0, 4)}-${orderIndex}`;
 
-    const orderId = `mfo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const orderId = randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(
@@ -119,7 +120,7 @@ export class ProductionOrdersService {
     // محاسبه اقلام مورد نیاز مواد اولیه (از انفجار BOM یا اقلام دستی)
     if (data.customMaterials && data.customMaterials.length > 0) {
       for (const mat of data.customMaterials) {
-        const matId = `mom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const matId = randomUUID();
         await this.db.run(
           `INSERT INTO manufacturing_order_materials (
             id, production_order_id, product_id, planned_quantity, actual_issued_quantity,
@@ -131,7 +132,7 @@ export class ProductionOrdersService {
     } else {
       const explosion = await this.bomsService.explodeBom(tenantId, companyId, targetBomId, plannedQty.toString());
       for (const item of explosion.materials) {
-        const matId = `mom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const matId = randomUUID();
         await this.db.run(
           `INSERT INTO manufacturing_order_materials (
             id, production_order_id, product_id, planned_quantity, actual_issued_quantity,
@@ -388,7 +389,7 @@ export class ProductionOrdersService {
       batchOverheadCost = batchOverheadCost.plus(overheadCost);
       opDateShamsi = op.recordedDateShamsi;
 
-      const opId = `mfo-op-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const opId = randomUUID();
       await this.db.run(
         `INSERT INTO manufacturing_order_operations (
           id, production_order_id, work_center_id, operation_name,
@@ -489,7 +490,7 @@ export class ProductionOrdersService {
       }
     }
 
-    const scrapId = `scrap-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const scrapId = randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(

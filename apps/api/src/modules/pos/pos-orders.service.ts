@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { InventoryService } from '../inventory/inventory.service';
 import {
@@ -71,7 +72,7 @@ export class PosOrdersService {
       throw new BadRequestException('سفارش باید حداقل شامل یک ردیف کالا باشد.');
     }
 
-    const orderId = `ord-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const orderId = randomUUID();
     const now = new Date().toISOString();
     const dateShamsi = shift.opened_at.split('T')[0]; // استفاده از تاریخ جاری شیفت
     const orderStatus = data.status || PosOrderStatus.COMPLETED;
@@ -180,7 +181,7 @@ export class PosOrdersService {
       }
 
       processedItems.push({
-        id: `ord-it-${Date.now()}-${i + 1}`,
+        id: randomUUID(),
         productId: product.id,
         productName: product.name,
         quantity: finalQty.toFixed(3),

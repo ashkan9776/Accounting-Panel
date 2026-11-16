@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import {
   JournalEngine,
@@ -73,6 +74,24 @@ export class JournalEntriesService {
     if (fy.is_closed || fy.is_locked) {
       throw new BadRequestException('سال مالی انتخاب شده بسته یا قفل است و امکان ثبت سند وجود ندارد.');
     }
+    if (fy.start_date_shamsi && fy.end_date_shamsi) {
+      if (data.entryDateShamsi < fy.start_date_shamsi || data.entryDateShamsi > fy.end_date_shamsi) {
+        throw new BadRequestException(
+          `تاریخ سند (${data.entryDateShamsi}) خارج از محدوده سال مالی (${fy.start_date_shamsi} تا ${fy.end_date_shamsi}) است.`
+        );
+      }
+    }
+
+    const monthPart = parseInt(data.entryDateShamsi.split('/')[1], 10);
+    if (!isNaN(monthPart)) {
+      const closedPeriod = await this.db.queryOne(
+        'SELECT * FROM fiscal_periods WHERE tenant_id = ? AND fiscal_year_id = ? AND period_number = ? AND is_closed = 1',
+        [tenantId, fiscalYearId, monthPart]
+      );
+      if (closedPeriod) {
+        throw new BadRequestException(`دوره مالی ماه ${monthPart} بسته شده است و امکان ثبت سند وجود ندارد.`);
+      }
+    }
 
     const subMap = await this.getSubsidiariesMap(tenantId, companyId);
 
@@ -90,7 +109,7 @@ export class JournalEntriesService {
     const nextDaily = (maxDailyRow?.max_daily || 0) + 1;
 
     let idCounter = 1;
-    const idGen = () => `entry-${Date.now()}-${idCounter++}`;
+    const idGen = () => randomUUID();
 
     // ۳. اعتبارسنجی حسابی و تولید مدل سند
     let domainEntry;
@@ -155,8 +174,8 @@ export class JournalEntriesService {
           `INSERT INTO journal_lines (
             id, journal_entry_id, row_number, subsidiary_account_id,
             floating_dimension_1_id, floating_dimension_2_id, floating_dimension_3_id,
-            debit, credit, description, currency_code, currency_rate
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            debit, credit, description, currency_code, currency_rate, foreign_amount
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             line.id,
             line.journalEntryId,
@@ -169,7 +188,8 @@ export class JournalEntriesService {
             line.credit,
             line.description,
             line.currencyCode,
-            line.currencyRate
+            line.currencyRate,
+            (line as any).foreignAmount || null
           ]
         );
       }
@@ -177,7 +197,7 @@ export class JournalEntriesService {
       // درج در زنجیره ممیزی
       const prevHash = await this.getLatestAuditHash(tenantId);
       const auditLog = AuditHashChain.createLogEntry(
-        `audit-${Date.now()}`,
+        randomUUID(),
         tenantId,
         userId,
         'INSERT',
@@ -308,7 +328,7 @@ export class JournalEntriesService {
 
       const prevHash = await this.getLatestAuditHash(tenantId);
       const auditLog = AuditHashChain.createLogEntry(
-        `audit-${Date.now()}`,
+        randomUUID(),
         tenantId,
         userId,
         'FINALIZE',
@@ -374,15 +394,27 @@ export class JournalEntriesService {
       }
     );
 
-    // علامت‌گذاری سند اصلی به عنوان REVERSED
-    await this.db.run(
-      'UPDATE journal_entries SET status = ?, reversal_entry_id = ?, updated_at = ? WHERE id = ?',
-      [JournalEntryStatus.REVERSED, reversalEntry.id, new Date().toISOString(), id]
-    );
+    // اتمیک‌سازی ثبت برگشت سند و به‌روزرسانی سند اصلی در یک تراکنش واحد
+    await this.db.transaction(async (tx) => {
+      // علامت‌گذاری سند اصلی به عنوان REVERSED
+      await tx.run(
+        'UPDATE journal_entries SET status = ?, reversal_entry_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
+        [JournalEntryStatus.REVERSED, reversalEntry.id, new Date().toISOString(), id, tenantId]
+      );
+      // اتصال شناسه سند مرجع به سند برگشتی و تایید خودکار آن
+      await tx.run(
+        'UPDATE journal_entries SET reversed_entry_id = ?, status = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
+        [id, JournalEntryStatus.APPROVED, new Date().toISOString(), reversalEntry.id, tenantId]
+      );
+    });
 
     return {
       originalEntryId: id,
-      reversalEntry
+      reversalEntry: {
+        ...reversalEntry,
+        reversedEntryId: id,
+        status: JournalEntryStatus.APPROVED
+      }
     };
   }
 }

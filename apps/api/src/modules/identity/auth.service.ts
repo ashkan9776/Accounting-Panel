@@ -1,7 +1,10 @@
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
+import { SecurityEngine } from '@accounting/core';
 
 @Injectable()
 export class AuthService {
@@ -10,7 +13,43 @@ export class AuthService {
     private readonly jwtService: JwtService
   ) {}
 
-  async login(mobile: string, password: string, tenantId: string = 'tenant-pishro') {
+  private async logSecurityEvent(
+    tenantId: string,
+    userId: string,
+    actionType: string,
+    ipAddress: string,
+    userAgent: string,
+    status: 'SUCCESS' | 'FAILED' | 'BLOCKED',
+    details?: Record<string, any>,
+  ) {
+    const logId = randomUUID();
+    const now = new Date().toISOString();
+    await this.db.run(
+      `INSERT INTO security_audit_logs (
+        id, organization_id, user_id, action_type, ip_address, user_agent, status, details_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        logId,
+        tenantId,
+        userId,
+        actionType,
+        ipAddress || '127.0.0.1',
+        userAgent || 'Antigravity Client',
+        status,
+        details ? JSON.stringify(details) : null,
+        now,
+      ],
+    );
+  }
+
+  async login(
+    mobile: string,
+    password: string,
+    tenantId: string = 'tenant-pishro',
+    twoFactorCode?: string,
+    clientIp?: string,
+    userAgent?: string,
+  ) {
     if (!mobile || !password) {
       throw new BadRequestException('شماره موبایل و کلمه عبور الزامی است.');
     }
@@ -30,8 +69,73 @@ export class AuthService {
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
+      await this.logSecurityEvent(
+        user.tenant_id,
+        user.id,
+        'FAILED_LOGIN',
+        clientIp || '127.0.0.1',
+        userAgent || 'Unknown',
+        'FAILED',
+        { reason: 'Wrong password' }
+      );
       throw new UnauthorizedException('شماره موبایل یا کلمه عبور اشتباه است.');
     }
+
+    // بررسی فعال بودن تایید دومرحله‌ای (2FA)
+    const secSettings = await this.db.queryOne<any>(
+      'SELECT two_factor_enabled, two_factor_secret, backup_codes_json FROM user_security_settings WHERE user_id = ?',
+      [user.id]
+    );
+
+    if (secSettings && Boolean(secSettings.two_factor_enabled)) {
+      if (!twoFactorCode) {
+        return {
+          requiresTwoFactor: true,
+          userId: user.id,
+          message: 'کد تایید دو مرحله‌ای (TOTP یا کد پشتیبان) الزامی است.'
+        };
+      }
+
+      let isValid2FA = SecurityEngine.verifyTotpCode(secSettings.two_factor_secret, twoFactorCode.trim(), 1);
+      if (!isValid2FA && secSettings.backup_codes_json) {
+        try {
+          const backupHashes: string[] = JSON.parse(secSettings.backup_codes_json);
+          const inputHash = crypto.createHash('sha256').update(twoFactorCode.trim().toUpperCase()).digest('hex');
+          const idx = backupHashes.indexOf(inputHash);
+          if (idx !== -1) {
+            isValid2FA = true;
+            backupHashes.splice(idx, 1);
+            await this.db.run(
+              'UPDATE user_security_settings SET backup_codes_json = ? WHERE user_id = ?',
+              [JSON.stringify(backupHashes), user.id]
+            );
+          }
+        } catch {}
+      }
+
+      if (!isValid2FA) {
+        await this.logSecurityEvent(
+          user.tenant_id,
+          user.id,
+          'FAILED_2FA',
+          clientIp || '127.0.0.1',
+          userAgent || 'Unknown',
+          'FAILED',
+          { reason: 'Invalid or expired 2FA code' }
+        );
+        throw new UnauthorizedException('کد تایید دو مرحله‌ای وارد شده نامعتبر یا منقضی است.');
+      }
+    }
+
+    // ثبت لاگ ورود موفق
+    await this.logSecurityEvent(
+      user.tenant_id,
+      user.id,
+      'LOGIN',
+      clientIp || '127.0.0.1',
+      userAgent || 'Unknown',
+      'SUCCESS'
+    );
 
     const roles = await this.db.query(
       `SELECT r.code, r.title FROM roles r

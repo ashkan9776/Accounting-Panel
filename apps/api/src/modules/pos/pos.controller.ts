@@ -29,6 +29,13 @@ export class PosController {
     return { success: true, data: shift };
   }
 
+  @Get('shifts')
+  async listShifts(@Req() req: Request) {
+    const ctx = req.tenantContext!;
+    const shifts = await this.shiftsService.listShifts(ctx.tenantId, ctx.companyId);
+    return { success: true, data: shifts };
+  }
+
   @Get('shifts/active')
   async getActiveShift(@Req() req: Request) {
     const ctx = req.tenantContext!;

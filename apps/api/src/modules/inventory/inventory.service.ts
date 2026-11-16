@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import {
@@ -31,7 +32,7 @@ export class InventoryService {
   }
 
   async createCategory(tenantId: string, companyId: string, data: { code: string; title: string; parentId?: string }) {
-    const id = `cat-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO product_categories (id, tenant_id, company_id, code, title, parent_id, created_at)
@@ -50,7 +51,7 @@ export class InventoryService {
   }
 
   async createUnit(tenantId: string, companyId: string, data: { code: string; title: string; symbol?: string; isReference?: boolean }) {
-    const id = `unit-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
@@ -61,7 +62,7 @@ export class InventoryService {
   }
 
   async createConversion(tenantId: string, data: { fromUnitId: string; toUnitId: string; conversionRate: string | number }) {
-    const id = `conv-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO unit_conversions (id, tenant_id, from_unit_id, to_unit_id, conversion_rate, created_at)
@@ -85,7 +86,7 @@ export class InventoryService {
     branchId: string,
     data: { code: string; name: string; address?: string; phone?: string; keeperName?: string }
   ) {
-    const id = `wh-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO warehouses (id, tenant_id, company_id, branch_id, code, name, address, phone, keeper_name, is_active, created_at)
@@ -142,8 +143,24 @@ export class InventoryService {
       purchasePrice?: string | number;
     }
   ) {
-    const id = `prod-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
+
+    if (!data.name || !data.name.trim()) {
+      throw new BadRequestException('نام کالا الزامی است.');
+    }
+    if (!data.code || !data.code.trim()) {
+      throw new BadRequestException('کد کالا الزامی است.');
+    }
+
+    // بررسی یکتایی کد کالا در سطح سازمان
+    const existingProd = await this.db.queryOne(
+      'SELECT id FROM products WHERE tenant_id = ? AND company_id = ? AND code = ?',
+      [tenantId, companyId, data.code.trim()]
+    );
+    if (existingProd) {
+      throw new BadRequestException(`کد کالای «${data.code}» قبلاً در این سازمان ثبت شده است.`);
+    }
 
     // اعتبارسنجی و تطبیق خودکار واحد سنجش کالا جهت جلوگیری از نقض کلید خارجی
     let resolvedUnitId = data.unitId;
@@ -260,7 +277,7 @@ export class InventoryService {
       description?: string;
     }
   ) {
-    const id = `stk-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO stock_ledger_entries (
@@ -350,7 +367,7 @@ export class InventoryService {
       items: Array<{ productId: string; physicalQuantity: string | number }>;
     }
   ) {
-    const countId = `count-${Date.now()}`;
+    const countId = randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(
@@ -370,7 +387,7 @@ export class InventoryService {
         state.averageCost
       );
 
-      const itemId = `cnt-item-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const itemId = randomUUID();
       const discType = disc.isDeficit ? 'DEFICIT' : disc.isSurplus ? 'SURPLUS' : 'NONE';
 
       await this.db.run(

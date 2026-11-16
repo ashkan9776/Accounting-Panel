@@ -50,14 +50,8 @@ export default function DashboardPage() {
       }
     } catch (err: any) {
       console.warn('Dashboard fetch error:', err);
-      setData({
-        totalLiquidity: 1540000000,
-        netProfit: 860000000,
-        totalSales: 3450000000,
-        receivablesBalance: 620000000,
-        payablesBalance: 410000000,
-        cashFlowPositive: true,
-      });
+      setError(err.message || 'خطا در دریافت اطلاعات داشبورد از سرور. لطفاً اتصال به سرویس API را بررسی کنید.');
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -160,6 +154,24 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 flex flex-col sm:flex-row items-center justify-between gap-4 no-print">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <div>
+              <p className="font-bold text-xs">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={loadDashboard}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-xs"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>تلاش مجدد</span>
+          </button>
+        </div>
+      )}
 
       {/* ۱. کارت‌های شاخص کلیدی منطبق بر صنف (Context-Aware KPI Cards) */}
       {activePreset === 'RESTAURANT' ? (

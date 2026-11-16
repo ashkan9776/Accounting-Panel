@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { DatabaseService } from '../../database/database.service';
 import { AccountingModule } from '../accounting/accounting.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { WorkCentersService } from './work-centers.service';
@@ -11,7 +10,6 @@ import { ManufacturingController } from './manufacturing.controller';
   imports: [AccountingModule, InventoryModule],
   controllers: [ManufacturingController],
   providers: [
-    DatabaseService,
     WorkCentersService,
     BomsService,
     ProductionOrdersService

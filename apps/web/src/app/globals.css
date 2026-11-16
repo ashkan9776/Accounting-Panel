@@ -73,13 +73,18 @@ aside nav::-webkit-scrollbar-thumb:hover {
 }
 
 @media print {
-  /* ۱. پنهان‌سازی اجباری سایدبار، هدرها، دکمه‌ها و المان‌های ناوبری */
+  /* ۱. پنهان‌سازی اجباری و قطعی سایدبار، هدرها، دکمه‌ها و المان‌های ناوبری */
   aside,
   nav,
   header,
   footer,
   .no-print,
   [data-sidebar],
+  .print\:hidden,
+  aside.flex,
+  header.flex,
+  nav.flex,
+  div[data-sidebar],
   button,
   .btn,
   input:not([type="checkbox"]),
@@ -89,11 +94,17 @@ aside nav::-webkit-scrollbar-thumb:hover {
   .modal-backdrop {
     display: none !important;
     visibility: hidden !important;
+    opacity: 0 !important;
     width: 0 !important;
     height: 0 !important;
+    max-width: 0 !important;
+    max-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
+    position: absolute !important;
+    left: -99999px !important;
+    overflow: hidden !important;
   }
 
   /* ۲. بازنشانی ساختار ریشه برای استفاده از ۱۰۰٪ عرض کاغذ */
@@ -113,11 +124,6 @@ aside nav::-webkit-scrollbar-thumb:hover {
     print-color-adjust: exact !important;
   }
 
-  /* شکستن ساختار Flex سایدبار در حالت پرینت */
-  .flex {
-    display: block !important;
-  }
-
   main {
     margin: 0 !important;
     padding: 0 !important;
@@ -126,11 +132,6 @@ aside nav::-webkit-scrollbar-thumb:hover {
     overflow: visible !important;
     height: auto !important;
     background: transparent !important;
-  }
-
-  div {
-    overflow: visible !important;
-    box-shadow: none !important;
   }
 
   .max-w-7xl,

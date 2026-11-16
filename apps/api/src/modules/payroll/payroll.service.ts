@@ -1,6 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import { EmployeesService } from './employees.service';
 import {
   PayrollEngine,
@@ -19,7 +21,8 @@ export class PayrollService {
   constructor(
     private readonly db: DatabaseService,
     private readonly journalService: JournalEntriesService,
-    private readonly employeesService: EmployeesService
+    private readonly employeesService: EmployeesService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   // ۱. تعریف دوره حقوق و دستمزد ماهانه
@@ -39,7 +42,7 @@ export class PayrollService {
       throw new BadRequestException('عنوان دوره، سال شمسی و شماره ماه الزامی است.');
     }
 
-    const id = `prd-${data.yearShamsi}-${data.monthNumber.toString().padStart(2, '0')}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(
@@ -298,11 +301,24 @@ export class PayrollService {
       });
     }
 
+    const salaryExpenseId = await this.accountMapping.getAccount(tenantId, companyId, 'SALARY_EXPENSE', 'sub-8101');
+    const employerInsuranceExpenseId = await this.accountMapping.getAccount(tenantId, companyId, 'INSURANCE_EXPENSE', 'sub-8102');
+    const insurancePayableId = await this.accountMapping.getAccount(tenantId, companyId, 'INSURANCE_PAYABLE', 'sub-3304');
+    const taxPayableId = await this.accountMapping.getAccount(tenantId, companyId, 'TAX_PAYABLE', 'sub-3305');
+    const salaryPayableId = await this.accountMapping.getAccount(tenantId, companyId, 'SALARY_PAYABLE', 'sub-3303');
+
     const journalLines = PayrollPostingEngine.buildMonthlyPayrollLines({
       periodTitle: period.title,
       dateShamsi: data.dateShamsi,
       costCenterDimensionId: data.costCenterDimensionId,
-      slips: slipsToPost
+      slips: slipsToPost,
+      accountOverrides: {
+        salaryExpenseId,
+        employerInsuranceExpenseId,
+        insurancePayableId,
+        taxPayableId,
+        salaryPayableId
+      }
     });
 
     const journalEntry = await this.journalService.createEntry(tenantId, companyId, branchId, fiscalYearId, userId, {
@@ -355,11 +371,16 @@ export class PayrollService {
       });
     }
 
+    const bankAccountId = await this.accountMapping.getAccount(tenantId, companyId, 'BANK', 'sub-1102');
+    const salaryPayableId = await this.accountMapping.getAccount(tenantId, companyId, 'SALARY_PAYABLE', 'sub-3303');
+
     const journalLines = PayrollPostingEngine.buildSalaryPaymentLines({
       periodTitle: period.title,
       dateShamsi: data.dateShamsi,
       totalPaidAmount: totalNetPay.toFixed(0),
+      bankAccountSubsidiaryId: bankAccountId,
       bankFloatingDimensionId: data.bankFloatingDimensionId,
+      salaryPayableAccountId: salaryPayableId,
       slips: paymentSlips
     });
 

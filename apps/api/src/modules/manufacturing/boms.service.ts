@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import {
   BomEngine,
@@ -56,7 +57,7 @@ export class BomsService {
       throw new BadRequestException('فرمول ساخت باید حداقل دارای یک قلم ماده اولیه یا قطعه باشد.');
     }
 
-    const bomId = data.id || `bom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const bomId = data.id || randomUUID();
     const now = new Date().toISOString();
 
     // غیرفعال کردن پیش‌فرض‌های قبلی محصول در صورت تعیین به عنوان پیش‌فرض
@@ -93,7 +94,7 @@ export class BomsService {
     // ثبت اقلام مواد اولیه
     let lineOrder = 1;
     for (const item of data.items) {
-      const itemId = item.id || `bi-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const itemId = item.id || randomUUID();
       await this.db.run(
         `INSERT INTO manufacturing_bom_items (
           id, bom_id, component_product_id, quantity, scrap_percentage,
@@ -117,7 +118,7 @@ export class BomsService {
     // ثبت روتینگ و مراحل عملیات در صورت وجود
     if (data.routings && data.routings.length > 0) {
       for (const r of data.routings) {
-        const routeId = r.id || `route-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const routeId = r.id || randomUUID();
         await this.db.run(
           `INSERT INTO manufacturing_routings (
             id, bom_id, work_center_id, step_number, operation_name,

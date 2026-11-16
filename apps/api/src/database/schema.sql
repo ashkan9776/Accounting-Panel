@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_super_admin INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
     created_at TEXT NOT NULL,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    UNIQUE(tenant_id, mobile)
 );
 
 CREATE TABLE IF NOT EXISTS roles (
@@ -127,7 +128,8 @@ CREATE TABLE IF NOT EXISTS account_groups (
     title TEXT NOT NULL,
     nature TEXT NOT NULL,
     description TEXT,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    UNIQUE(tenant_id, company_id, code)
 );
 
 CREATE TABLE IF NOT EXISTS account_heads (
@@ -140,7 +142,8 @@ CREATE TABLE IF NOT EXISTS account_heads (
     nature TEXT NOT NULL,
     description TEXT,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-    FOREIGN KEY (group_id) REFERENCES account_groups(id)
+    FOREIGN KEY (group_id) REFERENCES account_groups(id),
+    UNIQUE(tenant_id, company_id, code)
 );
 
 CREATE TABLE IF NOT EXISTS account_subsidiaries (
@@ -161,7 +164,8 @@ CREATE TABLE IF NOT EXISTS account_subsidiaries (
     is_active INTEGER DEFAULT 1,
     description TEXT,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-    FOREIGN KEY (head_id) REFERENCES account_heads(id)
+    FOREIGN KEY (head_id) REFERENCES account_heads(id),
+    UNIQUE(tenant_id, company_id, code)
 );
 
 CREATE TABLE IF NOT EXISTS floating_dimensions (
@@ -175,6 +179,20 @@ CREATE TABLE IF NOT EXISTS floating_dimensions (
     is_active INTEGER DEFAULT 1,
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS account_mappings (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    company_id TEXT NOT NULL,
+    mapping_key TEXT NOT NULL,
+    subsidiary_account_id TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    FOREIGN KEY (subsidiary_account_id) REFERENCES account_subsidiaries(id),
+    UNIQUE(tenant_id, company_id, mapping_key)
 );
 
 -- ۴. اسناد حسابداری و دفاتر قانونی
@@ -206,7 +224,9 @@ CREATE TABLE IF NOT EXISTS journal_entries (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
     FOREIGN KEY (branch_id) REFERENCES branches(id),
-    FOREIGN KEY (fiscal_year_id) REFERENCES fiscal_years(id)
+    FOREIGN KEY (fiscal_year_id) REFERENCES fiscal_years(id),
+    UNIQUE(tenant_id, company_id, fiscal_year_id, sequence_number),
+    UNIQUE(tenant_id, company_id, fiscal_year_id, permanent_number)
 );
 
 CREATE TABLE IF NOT EXISTS journal_lines (
@@ -280,6 +300,7 @@ CREATE TABLE IF NOT EXISTS parties (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     company_id TEXT NOT NULL,
+    code TEXT,
     party_type TEXT NOT NULL, -- INDIVIDUAL_IRANIAN, LEGAL_ENTITY, PARTNERSHIP, FOREIGN_NATIONAL
     name TEXT NOT NULL,
     first_name TEXT,
@@ -303,7 +324,8 @@ CREATE TABLE IF NOT EXISTS parties (
     created_at TEXT NOT NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
-    FOREIGN KEY (floating_dimension_id) REFERENCES floating_dimensions(id)
+    FOREIGN KEY (floating_dimension_id) REFERENCES floating_dimensions(id),
+    UNIQUE(tenant_id, company_id, code)
 );
 
 -- ۸. حساب‌های بانکی
@@ -525,7 +547,8 @@ CREATE TABLE IF NOT EXISTS products (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (company_id) REFERENCES companies(id),
     FOREIGN KEY (category_id) REFERENCES product_categories(id),
-    FOREIGN KEY (unit_id) REFERENCES product_units(id)
+    FOREIGN KEY (unit_id) REFERENCES product_units(id),
+    UNIQUE(tenant_id, company_id, code)
 );
 
 CREATE TABLE IF NOT EXISTS product_variants (
@@ -956,7 +979,7 @@ CREATE TABLE IF NOT EXISTS pos_orders (
     payment_method TEXT DEFAULT 'CASH', -- CASH, POS_CARD, MIXED, CREDIT
     cash_amount TEXT DEFAULT '0',
     pos_card_amount TEXT DEFAULT '0',
-    idempotency_key TEXT UNIQUE, -- تضمین عدم ثبت تکراری در سناریوهای قطعی اینترنت
+    idempotency_key TEXT, -- تضمین عدم ثبت تکراری در سناریوهای قطعی اینترنت
     is_offline_synced INTEGER DEFAULT 0,
     offline_created_at TEXT,
     moadian_tax_id TEXT,
@@ -965,7 +988,8 @@ CREATE TABLE IF NOT EXISTS pos_orders (
     FOREIGN KEY (company_id) REFERENCES companies(id),
     FOREIGN KEY (branch_id) REFERENCES branches(id),
     FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
-    FOREIGN KEY (shift_id) REFERENCES pos_shifts(id)
+    FOREIGN KEY (shift_id) REFERENCES pos_shifts(id),
+    UNIQUE(tenant_id, idempotency_key)
 );
 
 -- ۳۱. اقلام سفارش صندوق

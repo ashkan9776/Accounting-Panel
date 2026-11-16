@@ -1,7 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import {
   ValuationEngine,
   InventoryPostingEngine,
@@ -19,7 +21,8 @@ export class PurchasesService {
   constructor(
     private readonly db: DatabaseService,
     private readonly journalService: JournalEntriesService,
-    private readonly inventoryService: InventoryService
+    private readonly inventoryService: InventoryService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   async createPurchase(
@@ -93,7 +96,7 @@ export class PurchasesService {
     let totalGoodsAmount = new Decimal(0);
     let totalDiscount = new Decimal(data.discountAmount || 0);
     let totalVat = new Decimal(0);
-    const purchaseId = `pur-${Date.now()}`;
+    const purchaseId = randomUUID();
     const now = new Date().toISOString();
 
     const processedItems: any[] = [];
@@ -175,6 +178,12 @@ export class PurchasesService {
     const grandTotal = totalGoodsAmount.minus(totalDiscount).plus(freightAmt).plus(totalVat);
 
     // ۴. صدور خودکار سند دوبل حسابداری خرید کالا با کرایه حمل و ارزش افزوده
+    const [inventoryAccountId, vatInputAccountId, apAccountId] = await Promise.all([
+      this.accountMapping.getAccount(tenantId, companyId, 'INVENTORY'),
+      this.accountMapping.getAccount(tenantId, companyId, 'VAT_INPUT'),
+      this.accountMapping.getAccount(tenantId, companyId, 'AP'),
+    ]);
+
     const journalLines = InventoryPostingEngine.buildPurchaseInvoiceLines({
       supplierPartyDimensionId: supplier.floating_dimension_id,
       inventoryAmount: totalGoodsAmount.minus(totalDiscount).toFixed(0),
@@ -182,7 +191,10 @@ export class PurchasesService {
       freightPayeePartyDimensionId: freightPayeeDimId,
       vatAmount: totalVat.toFixed(0),
       invoiceNumber: data.documentNumber,
-      descriptionSuffix: `خرید از ${supplier.name}`
+      descriptionSuffix: `خرید از ${supplier.name}`,
+      inventoryAccountId,
+      vatInputAccountId,
+      apAccountId
     });
 
     const journalEntry = await this.journalService.createEntry(
@@ -201,58 +213,60 @@ export class PurchasesService {
       }
     );
 
-    // ۵. درج سربرگ و اقلام فاکتور خرید در پایگاه‌داده
-    await this.db.run(
-      `INSERT INTO purchase_documents (
-        id, tenant_id, company_id, branch_id, warehouse_id,
-        supplier_party_id, freight_party_id, document_number, date_shamsi,
-        total_goods_amount, freight_amount, total_discount, total_vat, grand_total,
-        status, journal_entry_id, description, created_by_user_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)`,
-      [
-        purchaseId,
-        tenantId,
-        companyId,
-        branchId,
-        data.warehouseId,
-        data.supplierPartyId,
-        data.freightPartyId || null,
-        data.documentNumber,
-        data.dateShamsi,
-        totalGoodsAmount.toFixed(0),
-        freightAmt.toFixed(0),
-        totalDiscount.toFixed(0),
-        totalVat.toFixed(0),
-        grandTotal.toFixed(0),
-        journalEntry.id,
-        data.description || null,
-        userId,
-        now
-      ]
-    );
-
-    for (const item of processedItems) {
-      await this.db.run(
-        `INSERT INTO purchase_document_items (
-          id, purchase_document_id, product_id, variant_id, quantity, unit_cost,
-          total_amount, discount_amount, vat_amount, allocated_freight_cost, final_unit_cost, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    // ۵. درج سربرگ و اقلام فاکتور خرید در پایگاه‌داده در قالب تراکنش اتمیک
+    await this.db.transaction(async (tx) => {
+      await tx.run(
+        `INSERT INTO purchase_documents (
+          id, tenant_id, company_id, branch_id, warehouse_id,
+          supplier_party_id, freight_party_id, document_number, date_shamsi,
+          total_goods_amount, freight_amount, total_discount, total_vat, grand_total,
+          status, journal_entry_id, description, created_by_user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)`,
         [
-          item.id,
           purchaseId,
-          item.productId,
-          item.variantId || null,
-          item.quantity,
-          item.unitCost,
-          item.totalAmount,
-          item.discountAmount,
-          item.vatAmount,
-          item.allocatedFreightCost,
-          item.finalUnitCost,
+          tenantId,
+          companyId,
+          branchId,
+          data.warehouseId,
+          data.supplierPartyId,
+          data.freightPartyId || null,
+          data.documentNumber,
+          data.dateShamsi,
+          totalGoodsAmount.toFixed(0),
+          freightAmt.toFixed(0),
+          totalDiscount.toFixed(0),
+          totalVat.toFixed(0),
+          grandTotal.toFixed(0),
+          journalEntry.id,
+          data.description || null,
+          userId,
           now
         ]
       );
-    }
+
+      for (const item of processedItems) {
+        await tx.run(
+          `INSERT INTO purchase_document_items (
+            id, purchase_document_id, product_id, variant_id, quantity, unit_cost,
+            total_amount, discount_amount, vat_amount, allocated_freight_cost, final_unit_cost, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            item.id,
+            purchaseId,
+            item.productId,
+            item.variantId || null,
+            item.quantity,
+            item.unitCost,
+            item.totalAmount,
+            item.discountAmount,
+            item.vatAmount,
+            item.allocatedFreightCost,
+            item.finalUnitCost,
+            now
+          ]
+        );
+      }
+    });
 
     return {
       id: purchaseId,

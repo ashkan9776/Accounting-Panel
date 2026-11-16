@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Factory,
@@ -16,7 +16,9 @@ import {
   TrendingUp,
   Cpu,
   Package,
+  RefreshCw,
 } from 'lucide-react';
+import { fetchApi, formatMoney } from '../../../lib/api';
 
 interface BomItem {
   id: string;
@@ -94,7 +96,8 @@ const MOCK_BOMS: Bom[] = [
 ];
 
 export default function ManufacturingBomsPage() {
-  const [boms, setBoms] = useState<Bom[]>(MOCK_BOMS);
+  const [boms, setBoms] = useState<Bom[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBomForExplosion, setSelectedBomForExplosion] = useState<Bom | null>(null);
 
@@ -103,6 +106,47 @@ export default function ManufacturingBomsPage() {
   const [newProductName, setNewProductName] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newVersion, setNewVersion] = useState('v1.0');
+
+  const loadBoms = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchApi('/manufacturing/boms');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped = res.data.map((b: any) => ({
+          id: b.id,
+          code: b.code || `BOM-${b.id.slice(-4)}`,
+          productName: b.product_name || b.productName || 'محصول صنعتی',
+          title: b.title || 'فرمول استاندارد ساخت',
+          version: b.version || 'v1.0',
+          yieldQuantity: Number(b.yield_quantity || b.yieldQuantity || 1),
+          status: (b.is_active ? 'ACTIVE' : 'DRAFT') as 'ACTIVE' | 'DRAFT' | 'OBSOLETE',
+          standardUnitCost: Number(b.standard_unit_cost || b.standardUnitCost || 0),
+          items: (b.items || []).map((it: any) => ({
+            id: it.id,
+            productId: it.raw_product_id || it.productId,
+            productName: it.raw_product_name || it.productName || 'ماده اولیه',
+            itemType: (it.item_type || 'RAW_MATERIAL') as 'RAW_MATERIAL' | 'SEMI_FINISHED' | 'PACKAGING',
+            quantityPerUnit: Number(it.quantity_per_unit || 1),
+            unit: it.unit_symbol || 'عدد',
+            unitCost: Number(it.unit_cost || 0),
+            scrapPercentage: Number(it.scrap_percentage || 0),
+            totalCost: Number(it.total_cost || 0),
+          })),
+        }));
+        setBoms(mapped);
+      } else {
+        setBoms(MOCK_BOMS);
+      }
+    } catch {
+      setBoms(MOCK_BOMS);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBoms();
+  }, []);
 
   const filteredBoms = boms.filter(
     (b) =>

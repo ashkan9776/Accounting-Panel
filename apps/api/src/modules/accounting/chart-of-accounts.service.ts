@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { FloatingDimensionType } from '@accounting/core';
 
@@ -46,7 +47,7 @@ export class ChartOfAccountsService {
     title: string,
     referenceId?: string
   ) {
-    const id = `dim-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     await this.db.run(
       `INSERT INTO floating_dimensions (id, tenant_id, company_id, dimension_type, code, title, reference_id, is_active, created_at)

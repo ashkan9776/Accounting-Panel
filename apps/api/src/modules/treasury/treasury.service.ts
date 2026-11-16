@@ -1,13 +1,16 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import { FloatingDimensionType, ChequePostingEngine } from '@accounting/core';
 
 @Injectable()
 export class TreasuryService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly journalService: JournalEntriesService
+    private readonly journalService: JournalEntriesService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   // ۱. حساب‌های بانکی
@@ -24,7 +27,7 @@ export class TreasuryService {
       initialBalance?: string | number;
     }
   ) {
-    const id = `bank-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
 
     // ایجاد تفصیلی شناور بانکی
@@ -33,7 +36,7 @@ export class TreasuryService {
       [tenantId]
     );
     const nextCode = ((maxCodeRow?.max_code || 300000) + 1).toString();
-    const floatingDimId = `dim-bank-${Date.now()}`;
+    const floatingDimId = randomUUID();
 
     await this.db.transaction(async (tx) => {
       await tx.run(
@@ -88,9 +91,9 @@ export class TreasuryService {
       initialBalance?: string | number;
     }
   ) {
-    const id = `cash-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
-    const floatingDimId = `dim-cash-${Date.now()}`;
+    const floatingDimId = randomUUID();
 
     await this.db.transaction(async (tx) => {
       await tx.run(
@@ -131,7 +134,7 @@ export class TreasuryService {
       ceilingAmount: string | number;
     }
   ) {
-    const id = `petty-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
 
     const custodian = await this.db.queryOne('SELECT floating_dimension_id FROM parties WHERE id = ?', [data.custodianPartyId]);
@@ -176,16 +179,21 @@ export class TreasuryService {
       description?: string;
     }
   ) {
-    // تعیین معین‌ها و تفصیلی‌های مبدا و مقصد
-    let sourceSub = 'sub-1103'; // بانک
-    let destSub = 'sub-1101';   // صندوق
+    // تعیین معین‌ها و تفصیلی‌های مبدا و مقصد بر اساس نگاشت پویا
+    const [cashSub, bankSub] = await Promise.all([
+      this.accountMapping.getAccount(tenantId, companyId, 'CASH'),
+      this.accountMapping.getAccount(tenantId, companyId, 'BANK'),
+    ]);
+
+    let sourceSub = bankSub;
+    let destSub = cashSub;
     let sourceDimId = data.sourceId;
     let destDimId = data.destId;
 
-    if (data.sourceType === 'CASH') sourceSub = 'sub-1101';
+    if (data.sourceType === 'CASH') sourceSub = cashSub;
     if (data.sourceType === 'PETTY') sourceSub = 'sub-1102';
 
-    if (data.destType === 'BANK') destSub = 'sub-1103';
+    if (data.destType === 'BANK') destSub = bankSub;
     if (data.destType === 'PETTY') destSub = 'sub-1102';
 
     // صدور سند حسابداری انتقال وجه
@@ -208,7 +216,7 @@ export class TreasuryService {
     await this.journalService.approveEntry(tenantId, entry.id, userId);
     await this.journalService.finalizeEntry(tenantId, entry.id, userId);
 
-    const transferId = `trans-${Date.now()}`;
+    const transferId = randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(
@@ -260,7 +268,7 @@ export class TreasuryService {
     let imported = 0;
 
     for (const r of rows) {
-      const id = `stmt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const id = randomUUID();
       await this.db.run(
         `INSERT INTO bank_statements (id, tenant_id, company_id, bank_account_id, statement_date_shamsi, reference_number, debit, credit, balance, description, is_reconciled, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,

@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import {
   MoadianInvoiceType,
@@ -174,7 +175,7 @@ export class MoadianService {
     const invPattern = options?.invoicePattern || MoadianInvoicePattern.PATTERN_1_GENERAL;
     const invSubject = options?.invoiceSubject || MoadianInvoiceSubject.MAIN;
 
-    const moadianInvoiceId = `moad-${Date.now()}`;
+    const moadianInvoiceId = randomUUID();
     const now = new Date().toISOString();
 
     // ثبت سربرگ صورتحساب مودیان
@@ -213,7 +214,7 @@ export class MoadianService {
     const preparedItems: any[] = [];
     for (let i = 0; i < salesItems.length; i++) {
       const it = salesItems[i];
-      const itemId = `moad-it-${Date.now()}-${i + 1}`;
+      const itemId = randomUUID();
       // شناسه ۱۳ رقمی کالا و خدمت (پیش‌فرض استاندارد قطعات و تجهیزات)
       const sstid = '2710000012345';
       const unitCode = '1640'; // کد ۴ رقمی واحد اندازه گیری (دستگاه/عدد)
@@ -262,7 +263,7 @@ export class MoadianService {
     }
 
     // افزودن خودکار به صف ارسال (Outbox Queue)
-    const outboxId = `outbox-${Date.now()}`;
+    const outboxId = randomUUID();
     await this.db.run(
       `INSERT INTO moadian_outbox_queue (
         id, tenant_id, company_id, moadian_invoice_id, priority, retry_count,
@@ -509,7 +510,7 @@ export class MoadianService {
         status = diff.isZero() ? 'MATCHED' : 'DISCREPANT';
       }
 
-      const recId = `rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const recId = randomUUID();
       await this.db.run(
         `INSERT INTO moadian_reconciliations (
           id, tenant_id, company_id, tax_id, document_type, portal_amount,

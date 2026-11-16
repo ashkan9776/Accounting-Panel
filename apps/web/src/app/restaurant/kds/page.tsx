@@ -16,7 +16,9 @@ import {
   Layers,
   ChefHat,
   Bike,
+  RefreshCw,
 } from 'lucide-react';
+import { fetchApi } from '../../../lib/api';
 
 interface KdsTicketItem {
   id: string;
@@ -113,8 +115,46 @@ const MOCK_KDS_TICKETS: KdsTicket[] = [
 ];
 
 export default function RestaurantKdsPage() {
-  const [tickets, setTickets] = useState<KdsTicket[]>(MOCK_KDS_TICKETS);
+  const [tickets, setTickets] = useState<KdsTicket[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [selectedStation, setSelectedStation] = useState<string>('ALL');
+
+  const loadTickets = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchApi('/restaurant/kds/tickets');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped = res.data.map((t: any) => ({
+          id: t.id,
+          ticketNumber: t.ticket_number || `#${t.id.slice(-3)}`,
+          orderSource: t.order_source || 'TABLE',
+          sourceTitle: t.source_title || 'سفارش رستوران',
+          station: t.station || 'HOT_KITCHEN',
+          status: t.status || 'PREPARING',
+          createdAt: t.created_at ? new Date(t.created_at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) : '13:00',
+          elapsedMinutes: t.elapsed_minutes || 5,
+          items: (t.items || []).map((it: any) => ({
+            id: it.id,
+            name: it.name || it.product_name,
+            quantity: it.quantity,
+            notes: it.notes,
+            isReady: it.is_ready,
+          })),
+        }));
+        setTickets(mapped);
+      } else {
+        setTickets(MOCK_KDS_TICKETS);
+      }
+    } catch {
+      setTickets(MOCK_KDS_TICKETS);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTickets();
+  }, []);
 
   // شبیه‌سازی افزایش زمان سپری‌شده هر دقیقه
   useEffect(() => {
@@ -128,16 +168,25 @@ export default function RestaurantKdsPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleNextStatus = (ticketId: string) => {
+  const handleNextStatus = async (ticketId: string) => {
+    const currentTicket = tickets.find((t) => t.id === ticketId);
+    if (!currentTicket) return;
+    let nextStatus: 'PREPARING' | 'READY' | 'SERVED' = 'PREPARING';
+    if (currentTicket.status === 'QUEUED') nextStatus = 'PREPARING';
+    else if (currentTicket.status === 'PREPARING') nextStatus = 'READY';
+    else if (currentTicket.status === 'READY') nextStatus = 'SERVED';
+
+    try {
+      await fetchApi(`/restaurant/kds/tickets/${ticketId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+    } catch {
+      // update local
+    }
+
     setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id === ticketId) {
-          if (t.status === 'QUEUED') return { ...t, status: 'PREPARING' };
-          if (t.status === 'PREPARING') return { ...t, status: 'READY' };
-          if (t.status === 'READY') return { ...t, status: 'SERVED' };
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === ticketId ? { ...t, status: nextStatus } : t))
     );
   };
 

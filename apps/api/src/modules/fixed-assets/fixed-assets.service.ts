@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import {
@@ -48,7 +49,7 @@ export class FixedAssetsService {
       throw new BadRequestException('پلاک اموال، عنوان، طبقه دارایی، بهای تمام‌شده و تاریخ خرید الزامی است.');
     }
 
-    const id = `ast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const id = randomUUID();
     const cost = new Decimal(data.historicalCost);
     const salvage = new Decimal(data.salvageValue || 0);
     const now = new Date().toISOString();
@@ -207,7 +208,7 @@ export class FixedAssetsService {
       });
 
       if (new Decimal(depResult.periodDepreciationAmount).greaterThan(0)) {
-        const recordId = `dep-rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const recordId = randomUUID();
         await this.db.run(
           `INSERT INTO fixed_asset_depreciation_records (
             id, asset_id, period_date_shamsi, months_count, opening_book_value,

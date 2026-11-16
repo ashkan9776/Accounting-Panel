@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { SecurityEngine, TwoFactorSetupResponse } from '@accounting/core';
 
@@ -90,7 +91,7 @@ export class SecurityService {
     status: 'SUCCESS' | 'FAILED' | 'BLOCKED',
     details?: Record<string, any>,
   ) {
-    const logId = `sec-log-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const logId = randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(

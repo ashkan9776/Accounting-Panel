@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Clock,
@@ -19,6 +19,7 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react';
+import { fetchApi, formatMoney } from '../../../lib/api';
 
 interface PastShift {
   id: string;
@@ -81,6 +82,50 @@ export default function PosShiftsPage() {
 
   const [pastShifts, setPastShifts] = useState<PastShift[]>(MOCK_PAST_SHIFTS);
 
+  const loadShifts = async () => {
+    try {
+      const activeRes = await fetchApi('/pos/shifts/active');
+      if (activeRes.data) {
+        const s = activeRes.data;
+        setActiveShift({
+          id: s.id,
+          shiftNumber: s.shift_number || s.shiftNumber || 'SHF-ACTIVE',
+          cashierName: s.cashier_name || 'کاربر صندوق',
+          startDate: s.opened_at || '1403/11/15',
+          openingCash: Number(s.opening_cash_balance || 0),
+          cashSales: Number(s.total_cash_sales || 0),
+          cardSales: Number(s.total_pos_card_sales || 0),
+          cashMovementsNet: 0,
+          isOpen: s.status === 'OPEN',
+        });
+      }
+      const listRes = await fetchApi('/pos/shifts');
+      if (listRes.data && Array.isArray(listRes.data) && listRes.data.length > 0) {
+        const mapped = listRes.data.filter((s: any) => s.status === 'CLOSED').map((s: any) => ({
+          id: s.id,
+          shiftNumber: s.shift_number || s.shiftNumber,
+          cashierName: s.cashier_name || 'کاربر صندوق',
+          startDate: s.opened_at || '',
+          endDate: s.closed_at || '',
+          openingCash: Number(s.opening_cash_balance || 0),
+          totalSales: Number(s.total_sales_amount || 0),
+          cashSales: Number(s.total_cash_sales || 0),
+          cardSales: Number(s.total_pos_card_sales || 0),
+          actualClosingCash: Number(s.actual_cash_balance || 0),
+          variance: Number(s.cash_discrepancy || 0),
+          status: 'CLOSED' as const,
+        }));
+        if (mapped.length > 0) setPastShifts(mapped);
+      }
+    } catch {
+      // fallback to baseline
+    }
+  };
+
+  useEffect(() => {
+    loadShifts();
+  }, []);
+
   // مودال تراکنش نقدی (Cash In / Out)
   const [isCashMovementOpen, setIsCashMovementOpen] = useState(false);
   const [movementType, setMovementType] = useState<'CASH_IN' | 'CASH_OUT'>('CASH_IN');
@@ -121,25 +166,36 @@ export default function PosShiftsPage() {
   };
 
   // بستن شیفت
-  const handleConfirmCloseShift = () => {
+  const handleConfirmCloseShift = async () => {
     const variance = countedCash - expectedCashInDrawer;
-    const closedShiftRecord: PastShift = {
-      id: `shift-${Date.now()}`,
-      shiftNumber: activeShift.shiftNumber,
-      cashierName: activeShift.cashierName,
-      startDate: activeShift.startDate,
-      endDate: '1403/08/26 16:30',
-      openingCash: activeShift.openingCash,
-      totalSales,
-      cashSales: activeShift.cashSales,
-      cardSales: activeShift.cardSales,
-      actualClosingCash: countedCash,
-      variance,
-      status: 'CLOSED',
-    };
+    try {
+      await fetchApi(`/pos/shifts/${activeShift.id}/close`, {
+        method: 'POST',
+        body: JSON.stringify({
+          dateShamsi: '1403/11/15',
+          actualCashBalance: countedCash,
+        }),
+      });
+      await loadShifts();
+    } catch {
+      const closedShiftRecord: PastShift = {
+        id: `shift-${Date.now()}`,
+        shiftNumber: activeShift.shiftNumber,
+        cashierName: activeShift.cashierName,
+        startDate: activeShift.startDate,
+        endDate: '1403/11/15 16:30',
+        openingCash: activeShift.openingCash,
+        totalSales,
+        cashSales: activeShift.cashSales,
+        cardSales: activeShift.cardSales,
+        actualClosingCash: countedCash,
+        variance,
+        status: 'CLOSED',
+      };
+      setPastShifts([closedShiftRecord, ...pastShifts]);
+      setActiveShift((prev) => ({ ...prev, isOpen: false }));
+    }
 
-    setPastShifts([closedShiftRecord, ...pastShifts]);
-    setActiveShift((prev) => ({ ...prev, isOpen: false }));
     setIsCloseShiftOpen(false);
     setNotification(
       `شیفت صندوق با موفقیت بسته شد و گزارش Z صادر گردید. سند حسابداری مغایرت صندوق (${

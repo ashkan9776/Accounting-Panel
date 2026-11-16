@@ -1,5 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { DatabaseService } from './database/database.service';
+import { APP_GUARD } from '@nestjs/core';
+import { DatabaseModule } from './database/database.module';
 import { TenancyModule } from './modules/tenancy/tenancy.module';
 import { TenantMiddleware } from './modules/tenancy/tenant.middleware';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -22,9 +23,13 @@ import { FinancialReportsModule } from './modules/financial-reports/financial-re
 import { OmnichannelModule } from './modules/omnichannel/omnichannel.module';
 import { SaaSModule } from './modules/saas/saas.module';
 import { AppController } from './app.controller';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { TenantIsolationGuard } from './modules/saas/tenant-isolation.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 
 @Module({
   imports: [
+    DatabaseModule,
     TenancyModule,
     IdentityModule,
     AccountingModule,
@@ -44,11 +49,23 @@ import { AppController } from './app.controller';
     OmnichannelModule,
     SaaSModule,
     RulesModule,
-    AuditModule
+    AuditModule,
   ],
   controllers: [AppController],
-  providers: [DatabaseService],
-  exports: [DatabaseService]
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TenantIsolationGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

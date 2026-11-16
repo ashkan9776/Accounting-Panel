@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import Decimal from 'decimal.js';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
@@ -26,7 +27,7 @@ export class MigrationService {
     userId?: string,
   ) {
     const validation = DataMigrationEngine.validateAccountsMigration(source, rows);
-    const batchId = `mig-acc-${Date.now()}`;
+    const batchId = randomUUID();
     const now = new Date().toISOString();
 
     if (!validation.isValid) {
@@ -46,13 +47,22 @@ export class MigrationService {
     let insertedCount = 0;
     for (const acc of validation.parsedData) {
       if (acc.type === 'SUBSIDIARY') {
-        const subId = `sub-mig-${acc.code}`;
+        const existing = await this.db.queryOne<any>(
+          'SELECT id FROM account_subsidiaries WHERE tenant_id = ? AND company_id = ? AND code = ?',
+          [tenantId, companyId, acc.code]
+        );
+        const subId = existing?.id || randomUUID();
         const headId = `head-${acc.parentCode || acc.code.substring(0, 2)}`;
         await this.db.run(
-          `INSERT OR REPLACE INTO account_subsidiaries (
+          `INSERT INTO account_subsidiaries (
             id, tenant_id, company_id, head_id, code, title, nature,
             requires_floating_dimension_1, is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)
+          ON CONFLICT(tenant_id, company_id, code) DO UPDATE SET
+            title = excluded.title,
+            nature = excluded.nature,
+            head_id = excluded.head_id,
+            is_active = 1`,
           [subId, tenantId, companyId, headId, acc.code, acc.name, acc.nature],
         );
         insertedCount++;
@@ -87,7 +97,7 @@ export class MigrationService {
     userId?: string,
   ) {
     const validation = DataMigrationEngine.validatePartiesMigration(source, rows);
-    const batchId = `mig-parties-${Date.now()}`;
+    const batchId = randomUUID();
     const now = new Date().toISOString();
 
     if (!validation.isValid) {
@@ -106,8 +116,8 @@ export class MigrationService {
 
     let insertedCount = 0;
     for (const p of validation.parsedData) {
-      const partyId = `party-mig-${Date.now()}-${insertedCount}`;
-      const dimId = `dim-mig-${Date.now()}-${insertedCount}`;
+      const partyId = randomUUID();
+      const dimId = randomUUID();
       const dbPartyType = p.partyType === 'LEGAL' ? 'LEGAL_ENTITY' : 'INDIVIDUAL_IRANIAN';
 
       // ۱. ایجاد بعد تفصیلی (Floating Dimension)
@@ -173,7 +183,7 @@ export class MigrationService {
     userId?: string,
   ) {
     const validation = DataMigrationEngine.validateProductsMigration(source, rows);
-    const batchId = `mig-prod-${Date.now()}`;
+    const batchId = randomUUID();
     const now = new Date().toISOString();
 
     if (!validation.isValid) {
@@ -199,7 +209,7 @@ export class MigrationService {
 
     let insertedCount = 0;
     for (const prod of validation.parsedData) {
-      const prodId = `prod-mig-${Date.now()}-${insertedCount}`;
+      const prodId = randomUUID();
       await this.db.run(
         `INSERT OR REPLACE INTO products (
           id, tenant_id, company_id, unit_id, code, name, type, barcode,
@@ -253,7 +263,7 @@ export class MigrationService {
   ) {
     // ۱. اعتبارسنجی دقیق تراز بودن سند افتتاحیه با دقت اعشاری ۲۸ رقمی
     const validation = DataMigrationEngine.validateOpeningBalances(source, rows);
-    const batchId = `mig-opn-${Date.now()}`;
+    const batchId = randomUUID();
     const now = new Date().toISOString();
 
     if (!validation.isValid) {
@@ -271,12 +281,18 @@ export class MigrationService {
       });
     }
 
-    // استخراج شعبه پیش‌فرض
+    // استخراج شعبه پیش‌فرض و تاریخ شروع سال مالی
     const branch = await this.db.queryOne<any>(
       `SELECT id FROM branches WHERE tenant_id = ? AND company_id = ? LIMIT 1`,
       [tenantId, companyId],
     );
     const branchId = branch?.id || 'branch-central-1';
+
+    const fy = await this.db.queryOne<any>(
+      `SELECT start_date_shamsi FROM fiscal_years WHERE id = ? AND tenant_id = ?`,
+      [fiscalYearId, tenantId],
+    );
+    const openingDateShamsi = fy?.start_date_shamsi || '1403/01/01';
 
     // تبدیل خطوط اعتبارسنجی‌شده به ساختار خطوط سند حسابداری
     const lines: any[] = [];
@@ -310,7 +326,7 @@ export class MigrationService {
       fiscalYearId,
       userId || 'user-admin-1',
       {
-        entryDateShamsi: '1404/01/01',
+        entryDateShamsi: openingDateShamsi,
         entryType: JournalEntryType.OPENING,
         description: `سند افتتاحیه دوره جدید منتقل‌شده از ${source}`,
         sourceModule: 'MIGRATION_ENGINE',

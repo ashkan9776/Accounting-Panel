@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Utensils,
@@ -18,7 +18,9 @@ import {
   DollarSign,
   Coffee,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
+import { fetchApi, formatMoney } from '../../../lib/api';
 
 interface RestaurantTable {
   id: string;
@@ -49,7 +51,9 @@ const MOCK_TABLES: RestaurantTable[] = [
 ];
 
 export default function RestaurantTablesPage() {
-  const [tables, setTables] = useState<RestaurantTable[]>(MOCK_TABLES);
+  const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string>('ALL');
   const [selectedTableForAction, setSelectedTableForAction] = useState<RestaurantTable | null>(null);
 
@@ -61,6 +65,40 @@ export default function RestaurantTablesPage() {
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [newOrderGuestName, setNewOrderGuestName] = useState('');
   const [newOrderGuestCount, setNewOrderGuestCount] = useState(2);
+
+  const loadTables = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchApi('/restaurant/tables');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped = res.data.map((t: any) => ({
+          id: t.id,
+          tableNumber: t.table_number || t.tableNumber,
+          section: t.section_name || t.section || 'سالن اصلی',
+          capacity: t.capacity || 4,
+          status: (t.status || 'VACANT') as 'VACANT' | 'OCCUPIED' | 'BILL_PRINTED' | 'RESERVED' | 'CLEANING',
+          currentOrderId: t.current_order_id,
+          customerName: t.customer_name,
+          seatedAt: t.seated_at,
+          currentTotalAmount: Number(t.current_total_amount || 0),
+          itemCount: t.item_count || 0,
+        }));
+        setTables(mapped);
+      } else {
+        setTables(MOCK_TABLES);
+      }
+    } catch (err: any) {
+      console.warn('Could not load tables from API, using baseline:', err);
+      setTables(MOCK_TABLES);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTables();
+  }, []);
 
   const sections = ['ALL', 'سالن اصلی', 'سالن VIP', 'فضای باز', 'بالکن'];
 

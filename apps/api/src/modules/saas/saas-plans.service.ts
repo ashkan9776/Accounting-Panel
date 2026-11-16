@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import {
   SaaSPlanDefinition,
@@ -156,14 +157,17 @@ export class SaaSPlansService {
     organizationId: string,
     newPlanId: string,
     billingCycle: 'MONTHLY' | 'YEARLY' = 'MONTHLY',
-    paymentReference: string = `UPG-${Date.now()}`,
+    paymentReference?: string,
   ) {
+    if (!paymentReference || !paymentReference.trim()) {
+      throw new BadRequestException('شناسه مرجع پرداخت بانکی الزامی است.');
+    }
     const upgradeCalc = await this.calculateUpgrade(organizationId, newPlanId);
     const now = new Date().toISOString();
     const durationDays = billingCycle === 'YEARLY' ? 365 : 30;
     const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
-    const newSubId = `sub-upg-${Date.now()}`;
+    const newSubId = randomUUID();
     await this.db.run(
       `INSERT INTO tenant_subscriptions (
         id, organization_id, plan_id, status, started_at, expires_at, auto_renew,

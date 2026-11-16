@@ -5,11 +5,11 @@ import { JournalEntriesService } from './journal-entries.service';
 import { JournalEntriesController } from './journal-entries.controller';
 import { ReportsService } from './reports.service';
 import { ReportsController } from './reports.controller';
-import { DatabaseService } from '../../database/database.service';
+import { AccountMappingService } from './account-mapping.service';
 
 @Module({
   controllers: [ChartOfAccountsController, JournalEntriesController, ReportsController],
-  providers: [ChartOfAccountsService, JournalEntriesService, ReportsService, DatabaseService],
-  exports: [ChartOfAccountsService, JournalEntriesService, ReportsService]
+  providers: [ChartOfAccountsService, JournalEntriesService, ReportsService, AccountMappingService],
+  exports: [ChartOfAccountsService, JournalEntriesService, ReportsService, AccountMappingService]
 })
 export class AccountingModule {}

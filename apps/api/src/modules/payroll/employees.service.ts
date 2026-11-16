@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { ContractType } from '@accounting/core';
 
@@ -41,9 +42,9 @@ export class EmployeesService {
       throw new BadRequestException('کد پرسنلی، کد ملی، نام، نام خانوادگی و شماره شبا الزامی است.');
     }
 
-    const employeeId = `emp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const partyId = `party-emp-${Date.now()}`;
-    const contractId = `cnt-${Date.now()}`;
+    const employeeId = randomUUID();
+    const partyId = randomUUID();
+    const contractId = randomUUID();
     const now = new Date().toISOString();
 
     // ایجاد رکورد شخص در جدول parties

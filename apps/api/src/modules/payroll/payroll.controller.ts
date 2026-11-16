@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { EmployeesService } from './employees.service';
 import { PayrollService } from './payroll.service';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('api/v1/payroll')
@@ -67,6 +68,7 @@ export class PayrollController {
     return { success: true, data: result };
   }
 
+  @RequirePermissions('PAYROLL_MANAGE')
   @Post('periods/:id/approve')
   async approvePayroll(@Req() req: Request, @Param('id') id: string, @Body() body: any) {
     const ctx = req.tenantContext!;
@@ -83,6 +85,7 @@ export class PayrollController {
     return { success: true, data: result };
   }
 
+  @RequirePermissions('PAYROLL_MANAGE')
   @Post('periods/:id/pay')
   async paySalaries(@Req() req: Request, @Param('id') id: string, @Body() body: any) {
     const ctx = req.tenantContext!;

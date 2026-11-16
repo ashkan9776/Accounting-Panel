@@ -33,7 +33,10 @@ export class GeneralLedgerEngine {
   /**
    * استخراج دفتر روزنامه رسمی (General Journal) با ردیف‌های پیوسته
    */
-  public static extractGeneralJournal(entries: JournalEntry[]): {
+  public static extractGeneralJournal(
+    entries: JournalEntry[],
+    subsidiaries?: AccountSubsidiary[]
+  ): {
     rows: {
       sequenceNumber: number;
       permanentNumber?: number;
@@ -41,6 +44,7 @@ export class GeneralLedgerEngine {
       description: string;
       subsidiaryCode: string;
       subsidiaryTitle: string;
+      subsidiaryAccountId?: string;
       debit: string;
       credit: string;
     }[];
@@ -48,12 +52,17 @@ export class GeneralLedgerEngine {
     totalCredit: string;
   } {
     const sortedEntries = [...entries].sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    const subMap = subsidiaries ? new Map(subsidiaries.map(s => [s.id, s])) : null;
     let totalDebit = new Decimal(0);
     let totalCredit = new Decimal(0);
     const rows: any[] = [];
 
     for (const entry of sortedEntries) {
-      if (entry.status !== JournalEntryStatus.APPROVED && entry.status !== JournalEntryStatus.FINALIZED) {
+      if (
+        entry.status !== JournalEntryStatus.APPROVED &&
+        entry.status !== JournalEntryStatus.FINALIZED &&
+        entry.status !== JournalEntryStatus.REVERSED
+      ) {
         continue;
       }
 
@@ -63,11 +72,17 @@ export class GeneralLedgerEngine {
         totalDebit = totalDebit.plus(d);
         totalCredit = totalCredit.plus(c);
 
+        const sub = subMap?.get(line.subsidiaryAccountId);
+        const code = (line as any).subsidiaryCode || sub?.code || line.subsidiaryAccountId;
+        const title = (line as any).subsidiaryTitle || sub?.title || '';
+
         rows.push({
           sequenceNumber: entry.sequenceNumber,
           permanentNumber: entry.permanentNumber,
           entryDateShamsi: entry.entryDateShamsi,
           description: line.description || entry.description,
+          subsidiaryCode: code,
+          subsidiaryTitle: title,
           subsidiaryAccountId: line.subsidiaryAccountId,
           debit: line.debit,
           credit: line.credit
@@ -99,7 +114,11 @@ export class GeneralLedgerEngine {
     const sortedEntries = [...entries].sort((a, b) => a.sequenceNumber - b.sequenceNumber);
 
     for (const entry of sortedEntries) {
-      if (entry.status !== JournalEntryStatus.APPROVED && entry.status !== JournalEntryStatus.FINALIZED) {
+      if (
+        entry.status !== JournalEntryStatus.APPROVED &&
+        entry.status !== JournalEntryStatus.FINALIZED &&
+        entry.status !== JournalEntryStatus.REVERSED
+      ) {
         continue;
       }
 

@@ -19,6 +19,60 @@ export class RecipesService {
     private readonly inventoryService: InventoryService
   ) {}
 
+  // ۰. دریافت فهرست کلیه دستور پخت‌ها
+  async listRecipes(tenantId: string, companyId: string) {
+    const recipes = await this.db.query(
+      `SELECT r.*, p.name as menu_product_name, p.sell_price as menu_sell_price
+       FROM restaurant_recipes r
+       JOIN products p ON r.menu_product_id = p.id
+       WHERE r.tenant_id = ? AND r.company_id = ? AND r.is_active = 1`,
+      [tenantId, companyId]
+    );
+
+    const result = [];
+    for (const r of recipes) {
+      const items = await this.db.query(
+        `SELECT ri.*, p.name as raw_product_name, p.code as raw_product_code, p.purchase_price as raw_unit_cost
+         FROM restaurant_recipe_items ri
+         JOIN products p ON ri.raw_product_id = p.id
+         WHERE ri.recipe_id = ?`,
+        [r.id]
+      );
+      const ingredients = items.map((it: any) => ({
+        unitCost: it.raw_unit_cost,
+        quantity: it.quantity,
+        wastePercentage: it.waste_percentage,
+      }));
+      const recipeCost = RecipeEngine.calculateRecipeCost(ingredients);
+      const sellPrice = new Decimal(r.menu_sell_price || 0);
+      const foodCostPct = sellPrice.greaterThan(0)
+        ? new Decimal(recipeCost).dividedBy(sellPrice).times(100).toNumber()
+        : 0;
+
+      result.push({
+        id: r.id,
+        menuProductId: r.menu_product_id,
+        name: r.menu_product_name,
+        category: 'غذای اصلی و کباب',
+        sellingPrice: sellPrice.toNumber(),
+        recipeCost: new Decimal(recipeCost).toNumber(),
+        foodCostPercentage: Math.round(foodCostPct * 10) / 10,
+        grossMarginAmount: sellPrice.minus(new Decimal(recipeCost)).toNumber(),
+        grossMarginPercentage: Math.round((100 - foodCostPct) * 10) / 10,
+        menuEngineeringCategory: foodCostPct <= 30 ? 'STAR' : 'PLOWHORSE',
+        ingredients: items.map((it: any) => ({
+          rawProductName: it.raw_product_name,
+          quantity: it.quantity,
+          unit: 'گرم',
+          unitCost: Number(it.raw_unit_cost),
+          wastePercentage: Number(it.waste_percentage),
+          totalCost: Number(it.raw_unit_cost) * Number(it.quantity) * (1 + Number(it.waste_percentage) / 100),
+        })),
+      });
+    }
+    return result;
+  }
+
   // ۱. دریافت دستور پخت کامل یک غذا همراه با اقلام مواد اولیه
   async getRecipe(tenantId: string, companyId: string, menuProductId: string) {
     const recipe = await this.db.queryOne(

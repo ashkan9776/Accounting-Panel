@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { DatabaseService } from '../../database/database.service';
 import { AccountingModule } from '../accounting/accounting.module';
 import { SaaSPlansService } from './saas-plans.service';
 import { SaaSPlansController } from './saas-plans.controller';
@@ -21,7 +20,6 @@ import { PlanQuotaGuard } from './plan-quota.guard';
     SecurityController,
   ],
   providers: [
-    DatabaseService,
     SaaSPlansService,
     OnboardingService,
     MigrationService,

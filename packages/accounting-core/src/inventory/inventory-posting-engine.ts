@@ -11,6 +11,9 @@ export interface PurchasePostingContext {
   vatAmount?: string | number;       // مالیات بر ارزش افزوده خرید (اعتبار مالیاتی)
   invoiceNumber: string;
   descriptionSuffix?: string;
+  inventoryAccountId?: string;
+  vatInputAccountId?: string;
+  apAccountId?: string;
 }
 
 export interface SalesPostingContext {
@@ -21,6 +24,10 @@ export interface SalesPostingContext {
   costCenterDimensionId?: string;     // مرکز هزینه اختیاری
   invoiceNumber: string;
   descriptionSuffix?: string;
+  arAccountId?: string;
+  discountAccountId?: string;
+  salesRevenueAccountId?: string;
+  vatOutputAccountId?: string;
 }
 
 export interface CogsPostingContext {
@@ -28,6 +35,8 @@ export interface CogsPostingContext {
   costCenterDimensionId?: string;     // مرکز هزینه اختیاری
   documentNumber: string;
   descriptionSuffix?: string;
+  cogsAccountId?: string;
+  inventoryAccountId?: string;
 }
 
 export interface SalesReturnPostingContext {
@@ -69,7 +78,7 @@ export class InventoryPostingEngine {
 
     // سطر بدهکار: موجودی کالا
     lines.push({
-      subsidiaryAccountId: 'sub-1501', // موجودی کالای تجاری
+      subsidiaryAccountId: ctx.inventoryAccountId || 'sub-1501', // موجودی کالای تجاری
       debit: totalInventoryLanded.toFixed(0),
       credit: 0,
       description: desc
@@ -78,7 +87,7 @@ export class InventoryPostingEngine {
     // سطر بدهکار: مالیات بر ارزش افزوده خرید (اعتبار مالیاتی) در صورت وجود
     if (vat.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-1403', // مالیات بر ارزش افزوده خرید
+        subsidiaryAccountId: ctx.vatInputAccountId || 'sub-1403', // مالیات بر ارزش افزوده خرید
         debit: vat.toFixed(0),
         credit: 0,
         description: `اعتبار ارزش افزوده خرید فاکتور ${ctx.invoiceNumber}`
@@ -90,14 +99,14 @@ export class InventoryPostingEngine {
       // تفکیک باربری و تامین‌کننده
       const supplierPayable = netGoods.plus(vat);
       lines.push({
-        subsidiaryAccountId: 'sub-3201', // بستانکاران تجاری
+        subsidiaryAccountId: ctx.apAccountId || 'sub-3201', // بستانکاران تجاری
         floatingDimension1Id: ctx.supplierPartyDimensionId,
         debit: 0,
         credit: supplierPayable.toFixed(0),
         description: desc
       });
       lines.push({
-        subsidiaryAccountId: 'sub-3201', // بستانکاران تجاری - کرایه حمل باربری
+        subsidiaryAccountId: ctx.apAccountId || 'sub-3201', // بستانکاران تجاری - کرایه حمل باربری
         floatingDimension1Id: ctx.freightPayeePartyDimensionId,
         debit: 0,
         credit: freight.toFixed(0),
@@ -107,7 +116,7 @@ export class InventoryPostingEngine {
       // کل مبلغ به حساب تامین‌کننده منظور می‌شود
       const totalPayable = totalInventoryLanded.plus(vat);
       lines.push({
-        subsidiaryAccountId: 'sub-3201', // بستانکاران تجاری
+        subsidiaryAccountId: ctx.apAccountId || 'sub-3201', // بستانکاران تجاری
         floatingDimension1Id: ctx.supplierPartyDimensionId,
         debit: 0,
         credit: totalPayable.toFixed(0),
@@ -143,7 +152,7 @@ export class InventoryPostingEngine {
 
     // سطر بدهکار: بدهکاران تجاری (مشتری)
     lines.push({
-      subsidiaryAccountId: 'sub-1301', // بدهکاران تجاری
+      subsidiaryAccountId: ctx.arAccountId || 'sub-1301', // بدهکاران تجاری
       floatingDimension1Id: ctx.customerPartyDimensionId,
       debit: netReceivable.toFixed(0),
       credit: 0,
@@ -153,7 +162,7 @@ export class InventoryPostingEngine {
     // سطر بدهکار: تخفیف در صورت وجود
     if (discount.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-6201', // تخفیفات نقدی فروش
+        subsidiaryAccountId: ctx.discountAccountId || 'sub-6201', // تخفیفات نقدی فروش
         debit: discount.toFixed(0),
         credit: 0,
         description: `تخفیف فاکتور فروش ${ctx.invoiceNumber}`
@@ -162,7 +171,7 @@ export class InventoryPostingEngine {
 
     // سطر بستانکار: فروش کالا و خدمات
     lines.push({
-      subsidiaryAccountId: 'sub-6101', // فروش کالا و محصولات
+      subsidiaryAccountId: ctx.salesRevenueAccountId || 'sub-6101', // فروش کالا و محصولات
       floatingDimension2Id: ctx.costCenterDimensionId,
       debit: 0,
       credit: gross.toFixed(0),
@@ -172,7 +181,7 @@ export class InventoryPostingEngine {
     // سطر بستانکار: ارزش افزوده فروش در صورت وجود
     if (vat.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-3306', // مالیات بر ارزش افزوده فروش
+        subsidiaryAccountId: ctx.vatOutputAccountId || 'sub-3306', // مالیات بر ارزش افزوده فروش
         debit: 0,
         credit: vat.toFixed(0),
         description: `ارزش افزوده فاکتور فروش ${ctx.invoiceNumber}`
@@ -197,14 +206,14 @@ export class InventoryPostingEngine {
 
     return [
       {
-        subsidiaryAccountId: 'sub-7101', // بهای تمام‌شده کالای فروش‌رفته (COGS)
+        subsidiaryAccountId: ctx.cogsAccountId || 'sub-7101', // بهای تمام‌شده کالای فروش‌رفته (COGS)
         floatingDimension2Id: ctx.costCenterDimensionId,
         debit: cogs.toFixed(0),
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1501', // موجودی کالای تجاری
+        subsidiaryAccountId: ctx.inventoryAccountId || 'sub-1501', // موجودی کالای تجاری
         debit: 0,
         credit: cogs.toFixed(0),
         description: desc

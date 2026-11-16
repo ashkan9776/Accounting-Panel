@@ -217,9 +217,12 @@ export function Sidebar() {
   });
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-200 h-screen max-h-screen shrink-0 flex flex-col shadow-xl select-none no-print print:hidden">
+    <aside
+      data-sidebar
+      className="w-64 bg-slate-900 text-slate-200 h-screen max-h-screen shrink-0 flex flex-col shadow-xl select-none overflow-hidden no-print print:hidden"
+    >
       {/* برند و لوگو */}
-      <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-800">
+      <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-800 shrink-0">
         <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shadow-md shadow-emerald-900/50">
           <Scale className="w-5 h-5" />
         </div>
@@ -230,7 +233,7 @@ export function Sidebar() {
       </div>
 
       {/* لیست منوها بر اساس صنف فعال */}
-      <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 min-h-0 py-4 px-3 space-y-1 overflow-y-auto overscroll-contain">
         {visibleMenuItems.map((item, idx) => {
           if (item.items) {
             const hasActiveChild = item.items.some((sub) => pathname === sub.href);

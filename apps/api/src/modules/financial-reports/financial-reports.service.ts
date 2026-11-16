@@ -30,14 +30,13 @@ export class FinancialReportsService {
     toDateShamsi?: string,
     fiscalYearId?: string
   ): Promise<IncomeStatementReport> {
-    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ?', [companyId]);
-    const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY');
-
+    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ? AND tenant_id = ?', [companyId, tenantId]);
     const fromDate = fromDateShamsi || '1403/01/01';
     const toDate = toDateShamsi || '1403/12/29';
+    const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY', fromDate, toDate);
 
     return IncomeStatementEngine.generateIncomeStatement({
-      companyTitle: company?.legal_name || 'شرکت پیشرو پارس',
+      companyTitle: company?.legal_name || 'شرکت',
       fromDateShamsi: fromDate,
       toDateShamsi: toDate,
       trialBalanceRows: tb.rows
@@ -51,14 +50,13 @@ export class FinancialReportsService {
     asOfDateShamsi?: string,
     fiscalYearId?: string
   ): Promise<BalanceSheetReport> {
-    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ?', [companyId]);
-    const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY');
-    const is = await this.getIncomeStatement(tenantId, companyId, undefined, asOfDateShamsi, fiscalYearId);
-
+    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ? AND tenant_id = ?', [companyId, tenantId]);
     const asOfDate = asOfDateShamsi || '1403/12/29';
+    const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY', undefined, asOfDate);
+    const is = await this.getIncomeStatement(tenantId, companyId, undefined, asOfDate, fiscalYearId);
 
     return BalanceSheetEngine.generateBalanceSheet({
-      companyTitle: company?.legal_name || 'شرکت پیشرو پارس',
+      companyTitle: company?.legal_name || 'شرکت',
       asOfDateShamsi: asOfDate,
       trialBalanceRows: tb.rows,
       netIncomeCurrentPeriod: is.netIncome
@@ -73,17 +71,22 @@ export class FinancialReportsService {
     toDateShamsi?: string,
     fiscalYearId?: string
   ): Promise<CashFlowReport> {
-    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ?', [companyId]);
-    const is = await this.getIncomeStatement(tenantId, companyId, fromDateShamsi, toDateShamsi, fiscalYearId);
-    const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY');
+    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ? AND tenant_id = ?', [companyId, tenantId]);
+    const fromDate = fromDateShamsi || '1403/01/01';
+    const toDate = toDateShamsi || '1403/12/29';
+    const is = await this.getIncomeStatement(tenantId, companyId, fromDate, toDate, fiscalYearId);
+    const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY', fromDate, toDate);
 
     // استخراج استهلاک و سود/زیان واگذاری از دفاتر
     let depExp = new Decimal(0);
     let gainDisp = new Decimal(0);
     let lossDisp = new Decimal(0);
 
+    let arOpening = new Decimal(0);
     let arClosing = new Decimal(0);
+    let invOpening = new Decimal(0);
     let invClosing = new Decimal(0);
+    let apOpening = new Decimal(0);
     let apClosing = new Decimal(0);
     let cashBeginning = new Decimal(0);
 
@@ -94,45 +97,65 @@ export class FinancialReportsService {
       const cDeb = new Decimal(r.closingDebit || 0);
       const cCred = new Decimal(r.closingCredit || 0);
       const oDeb = new Decimal(r.openingDebit || 0);
+      const oCred = new Decimal(r.openingCredit || 0);
 
       if (code === '8104') depExp = depExp.plus(pDeb);
       if (code === '6106') gainDisp = gainDisp.plus(pCred);
       if (code === '8110') lossDisp = lossDisp.plus(pDeb);
 
-      if (code.startsWith('13')) arClosing = arClosing.plus(cDeb.minus(cCred));
-      if (code.startsWith('15')) invClosing = invClosing.plus(cDeb.minus(cCred));
+      if (code.startsWith('13')) {
+        arOpening = arOpening.plus(oDeb.minus(oCred));
+        arClosing = arClosing.plus(cDeb.minus(cCred));
+      }
+      if (code.startsWith('15')) {
+        invOpening = invOpening.plus(oDeb.minus(oCred));
+        invClosing = invClosing.plus(cDeb.minus(cCred));
+      }
       if (code.startsWith('31') || code.startsWith('32') || code.startsWith('33')) {
+        apOpening = apOpening.plus(oCred.minus(oDeb));
         apClosing = apClosing.plus(cCred.minus(cDeb));
       }
-      if (code.startsWith('11')) cashBeginning = cashBeginning.plus(oDeb);
+      if (code.startsWith('11')) {
+        cashBeginning = cashBeginning.plus(oDeb.minus(oCred));
+      }
     }
 
-    // استخراج معاملات خرید و فروش دارایی‌های ثابت
-    const fixedAssetStats = await this.db.queryOne(
-      `SELECT
-         SUM(CASE WHEN acquisition_journal_entry_id IS NOT NULL THEN CAST(historical_cost AS REAL) ELSE 0 END) as purchases,
-         SUM(CASE WHEN status = 'SOLD' THEN CAST(disposal_sale_price AS REAL) ELSE 0 END) as sales
-       FROM fixed_assets
-       WHERE tenant_id = ? AND company_id = ?`,
-      [tenantId, companyId]
-    );
+    const arChange = arClosing.minus(arOpening);
+    const invChange = invClosing.minus(invOpening);
+    const apChange = apClosing.minus(apOpening);
 
-    const purchases = fixedAssetStats?.purchases || 0;
-    const sales = fixedAssetStats?.sales || 0;
+    // استخراج معاملات خرید و فروش دارایی‌های ثابت با استفاده از Decimal
+    let faQuery = `SELECT historical_cost, disposal_sale_price, status, acquisition_journal_entry_id FROM fixed_assets WHERE tenant_id = ? AND company_id = ?`;
+    const faParams: any[] = [tenantId, companyId];
+    if (fromDateShamsi && toDateShamsi) {
+      faQuery += ` AND (purchase_date_shamsi BETWEEN ? AND ? OR disposal_date_shamsi BETWEEN ? AND ?)`;
+      faParams.push(fromDateShamsi, toDateShamsi, fromDateShamsi, toDateShamsi);
+    }
+    const faRows = await this.db.query(faQuery, faParams);
+    let purchases = new Decimal(0);
+    let sales = new Decimal(0);
+    for (const fa of faRows) {
+      if (fa.acquisition_journal_entry_id && fa.historical_cost) {
+        purchases = purchases.plus(new Decimal(fa.historical_cost));
+      }
+      if (fa.status === 'SOLD' && fa.disposal_sale_price) {
+        sales = sales.plus(new Decimal(fa.disposal_sale_price));
+      }
+    }
 
     return CashFlowEngine.generateCashFlowStatement({
-      companyTitle: company?.legal_name || 'شرکت پیشرو پارس',
-      fromDateShamsi: fromDateShamsi || '1403/01/01',
-      toDateShamsi: toDateShamsi || '1403/12/29',
+      companyTitle: company?.legal_name || 'شرکت',
+      fromDateShamsi: fromDate,
+      toDateShamsi: toDate,
       netIncome: is.netIncome,
       depreciationExpense: depExp.toFixed(0),
       gainOnAssetDisposal: gainDisp.toFixed(0),
       lossOnAssetDisposal: lossDisp.toFixed(0),
-      accountsReceivableChange: arClosing.toFixed(0),
-      inventoryChange: invClosing.toFixed(0),
-      accountsPayableChange: apClosing.toFixed(0),
-      fixedAssetPurchases: purchases,
-      fixedAssetSaleProceeds: sales,
+      accountsReceivableChange: arChange.toFixed(0),
+      inventoryChange: invChange.toFixed(0),
+      accountsPayableChange: apChange.toFixed(0),
+      fixedAssetPurchases: purchases.toFixed(0),
+      fixedAssetSaleProceeds: sales.toFixed(0),
       beginningCashBalance: cashBeginning.toFixed(0)
     });
   }

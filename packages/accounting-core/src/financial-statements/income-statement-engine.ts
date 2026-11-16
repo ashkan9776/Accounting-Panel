@@ -96,10 +96,16 @@ export class IncomeStatementEngine {
       .minus(otherExpenses);
 
     // ۴. مالیات عملکرد و سود خالص
+    let estimatedTax = new Decimal(0);
+    if (profitBeforeTax.greaterThan(0)) {
+      const rate = params.corporateTaxRate ? new Decimal(params.corporateTaxRate) : new Decimal(0.25);
+      estimatedTax = profitBeforeTax.times(rate).round();
+    }
+
     let taxProvision = bookedTaxExpense;
-    if (taxProvision.isZero() && profitBeforeTax.greaterThan(0)) {
-      const rate = new Decimal(params.corporateTaxRate || 0.25);
-      taxProvision = profitBeforeTax.times(rate).round();
+    // تنها در صورتی که نرخ مالیات صراحتاً درخواست شده باشد و مالیات در دفاتر ثبت نشده باشد محاسبه می‌شود
+    if (taxProvision.isZero() && profitBeforeTax.greaterThan(0) && params.corporateTaxRate) {
+      taxProvision = estimatedTax;
     }
 
     const netIncome = profitBeforeTax.minus(taxProvision);
@@ -128,6 +134,7 @@ export class IncomeStatementEngine {
       profitBeforeTax: profitBeforeTax.toFixed(0),
 
       incomeTaxProvision: taxProvision.toFixed(0),
+      estimatedTaxProvision: estimatedTax.toFixed(0),
       netIncome: netIncome.toFixed(0),
       isProfitable
     };

@@ -25,10 +25,18 @@ export class ReportsService {
     const entries = await this.db.query(sql, params);
     if (entries.length === 0) return [];
 
-    const entryIds = entries.map((e: any) => `'${e.id}'`).join(',');
-    const allLines = await this.db.query(
-      `SELECT * FROM journal_lines WHERE journal_entry_id IN (${entryIds}) ORDER BY row_number ASC`
-    );
+    const ids = entries.map((e: any) => e.id);
+    const chunkSize = 500;
+    const allLines: any[] = [];
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      const chunkLines = await this.db.query(
+        `SELECT * FROM journal_lines WHERE journal_entry_id IN (${placeholders}) ORDER BY row_number ASC`,
+        chunk
+      );
+      allLines.push(...chunkLines);
+    }
 
     const linesByEntry = new Map<string, any[]>();
     for (const l of allLines) {
@@ -77,7 +85,9 @@ export class ReportsService {
     tenantId: string,
     companyId: string,
     fiscalYearId?: string,
-    level: 'SUBSIDIARY' | 'HEAD' | 'GROUP' = 'SUBSIDIARY'
+    level: 'SUBSIDIARY' | 'HEAD' | 'GROUP' = 'SUBSIDIARY',
+    fromDateShamsi?: string,
+    toDateShamsi?: string
   ) {
     const [entries, rawSubs, rawHeads, rawGroups] = await Promise.all([
       this.fetchAllEntriesWithLines(tenantId, companyId, fiscalYearId),
@@ -114,12 +124,35 @@ export class ReportsService {
       nature: r.nature
     }));
 
-    return TrialBalanceEngine.generateTrialBalance(entries, subsidiaries, heads, groups, level, true);
+    return TrialBalanceEngine.generateTrialBalance(
+      entries,
+      subsidiaries,
+      heads,
+      groups,
+      level,
+      true,
+      { fromDateShamsi, toDateShamsi }
+    );
   }
 
   async getGeneralJournal(tenantId: string, companyId: string, fiscalYearId?: string) {
-    const entries = await this.fetchAllEntriesWithLines(tenantId, companyId, fiscalYearId);
-    return GeneralLedgerEngine.extractGeneralJournal(entries);
+    const [entries, rawSubs] = await Promise.all([
+      this.fetchAllEntriesWithLines(tenantId, companyId, fiscalYearId),
+      this.db.query('SELECT * FROM account_subsidiaries WHERE tenant_id = ? AND company_id = ?', [tenantId, companyId])
+    ]);
+    const subsidiaries: AccountSubsidiary[] = rawSubs.map((r: any) => ({
+      id: r.id,
+      headId: r.head_id,
+      code: r.code,
+      title: r.title,
+      nature: r.nature,
+      requiresFloatingDimension1: Boolean(r.requires_floating_dimension_1),
+      requiresFloatingDimension2: Boolean(r.requires_floating_dimension_2),
+      requiresFloatingDimension3: Boolean(r.requires_floating_dimension_3),
+      isCurrencyDependent: Boolean(r.is_currency_dependent),
+      isActive: Boolean(r.is_active)
+    }));
+    return GeneralLedgerEngine.extractGeneralJournal(entries, subsidiaries);
   }
 
   async getSubsidiaryLedger(

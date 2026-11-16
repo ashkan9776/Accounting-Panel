@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import { RecipesService } from './recipes.service';
@@ -65,7 +66,7 @@ export class RestaurantOrdersService {
       table = await this.tablesService.getTable(tenantId, companyId, data.tableId);
     }
 
-    const orderId = `ro-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const orderId = randomUUID();
     const now = new Date().toISOString();
     const countRow = await this.db.queryOne(
       'SELECT COUNT(*) as count FROM restaurant_orders WHERE tenant_id = ? AND company_id = ?',
@@ -113,7 +114,7 @@ export class RestaurantOrdersService {
       }
 
       processedItems.push({
-        id: `roi-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        id: randomUUID(),
         productId: product.id,
         quantity: qty.toFixed(0),
         unitPrice: unitPrice.toFixed(0),

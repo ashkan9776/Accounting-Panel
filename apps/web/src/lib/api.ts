@@ -54,6 +54,13 @@ export async function fetchApi<T = any>(
   const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      if (!window.location.pathname.startsWith('/auth')) {
+        window.location.href = '/auth/login';
+      }
+    }
     throw new Error(json.message || `خطای سرور: ${response.status}`);
   }
 

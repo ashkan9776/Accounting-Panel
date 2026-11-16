@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { DeliveryStatus } from '@accounting/core';
 import Decimal from 'decimal.js';
@@ -31,7 +32,7 @@ export class DeliveriesService {
       throw new NotFoundException(`سفارش با شناسه ${orderId} یافت نشد.`);
     }
 
-    const id = `del-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     const fee = new Decimal(data.deliveryFee || 0);
 

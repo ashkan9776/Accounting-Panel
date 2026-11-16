@@ -2,11 +2,14 @@ import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { SaaSPlansService } from './saas-plans.service';
+import { Public } from '../../common/decorators/public.decorator';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 
 @Controller('api/v1/saas')
 export class SaaSPlansController {
   constructor(private readonly plansService: SaaSPlansService) {}
 
+  @Public()
   @Get('plans')
   async listPlans() {
     const result = await this.plansService.listPlans();
@@ -37,6 +40,7 @@ export class SaaSPlansController {
     return { success: true, data: result };
   }
 
+  @RequirePermissions('SAAS_ADMIN')
   @UseGuards(AuthGuard('jwt'))
   @Post('upgrade/execute')
   async executeUpgrade(

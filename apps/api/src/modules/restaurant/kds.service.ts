@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { KitchenStation, KdsTicketStatus, RestaurantOrderStatus } from '@accounting/core';
 
@@ -29,7 +30,7 @@ export class KdsService {
     const now = new Date().toISOString();
 
     for (const [station, itemIds] of Object.entries(stationMap)) {
-      const ticketId = `kds-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const ticketId = randomUUID();
       const countRow = await this.db.queryOne(
         'SELECT COUNT(*) as count FROM restaurant_kds_tickets WHERE tenant_id = ? AND company_id = ?',
         [tenantId, companyId]

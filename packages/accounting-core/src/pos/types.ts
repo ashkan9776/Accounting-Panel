@@ -56,4 +56,11 @@ export interface ConsolidatedShiftPostingContext {
   costCenterDimensionId?: string;    // مرکز هزینه فروشگاه
   // مغایرت کسری یا فزونی نقدینگی صندوق در پایان شیفت
   cashDiscrepancy?: string | number; // منفی: کسری صندوق / مثبت: فزونی صندوق
+  accountOverrides?: {
+    cashAccountId?: string;
+    posInTransitAccountId?: string;
+    discountAccountId?: string;
+    salesRevenueAccountId?: string;
+    vatOutputAccountId?: string;
+  };
 }

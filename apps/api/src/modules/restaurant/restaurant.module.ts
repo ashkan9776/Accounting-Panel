@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { DatabaseService } from '../../database/database.service';
 import { AccountingModule } from '../accounting/accounting.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { TablesService } from './tables.service';
@@ -17,8 +16,7 @@ import { RestaurantController } from './restaurant.controller';
     RecipesService,
     KdsService,
     DeliveriesService,
-    RestaurantOrdersService,
-    DatabaseService
+    RestaurantOrdersService
   ],
   exports: [
     TablesService,

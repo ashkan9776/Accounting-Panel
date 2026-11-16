@@ -82,6 +82,9 @@ export function parseShamsiString(str: string): ShamsiDateComponents {
     throw new Error(`قالب تاریخ شمسی نامعتبر است: ${str}`);
   }
   const [year, month, day] = parts;
+  if (year < 1300 || year > 1500) {
+    throw new Error(`سال شمسی باید بین ۱۳۰۰ تا ۱۵۰۰ باشد: ${year}`);
+  }
   if (month < 1 || month > 12) {
     throw new Error(`ماه شمسی باید بین ۱ تا ۱۲ باشد: ${month}`);
   }

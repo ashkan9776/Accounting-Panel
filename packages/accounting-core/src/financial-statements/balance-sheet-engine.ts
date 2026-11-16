@@ -58,11 +58,8 @@ export class BalanceSheetEngine {
       }
       // ب. گروه ۲: دارایی‌های غیرجاری (دارایی ثابت و استهلاک انباشته)
       else if (code.startsWith('21') || code.startsWith('22') || code.startsWith('23') || code.startsWith('16')) {
-        // توجه: استهلاک انباشته (کد ۲۲) ماهیت بستانکار دارد و کاهنده دارایی است
-        let netAmt = debitBal.minus(creditBal);
-        if (code.startsWith('22')) {
-          netAmt = creditBal.negated(); // استهلاک انباشته با علامت منفی
-        }
+        // حساب‌های استهلاک انباشته (کد ۲۲) ماهیت بستانکار/کاهنده دارایی دارند و با debitBal.minus(creditBal) منفی می‌شوند
+        const netAmt = debitBal.minus(creditBal);
         if (!netAmt.isZero()) {
           nonCurrentAssetLines.push({
             code,

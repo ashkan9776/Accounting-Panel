@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import {
@@ -53,7 +54,7 @@ export class ChequesService {
       throw new BadRequestException(inquiry.message);
     }
 
-    const chequeId = `chq-${Date.now()}`;
+    const chequeId = randomUUID();
     const now = new Date().toISOString();
     const policy = data.postingPolicy || PostingPolicy.AUTO_POST;
     const initialStatus = data.chequeDirection === ChequeDirection.RECEIVABLE ? ChequeStatus.AT_HAND : 'ISSUED';
@@ -65,11 +66,11 @@ export class ChequesService {
     let payeeDimId: string | undefined;
 
     if (data.drawerPartyId) {
-      const p = await this.db.queryOne('SELECT floating_dimension_id FROM parties WHERE id = ?', [data.drawerPartyId]);
+      const p = await this.db.queryOne('SELECT floating_dimension_id FROM parties WHERE id = ? AND tenant_id = ?', [data.drawerPartyId, tenantId]);
       drawerDimId = p?.floating_dimension_id;
     }
     if (data.payeePartyId) {
-      const p = await this.db.queryOne('SELECT floating_dimension_id FROM parties WHERE id = ?', [data.payeePartyId]);
+      const p = await this.db.queryOne('SELECT floating_dimension_id FROM parties WHERE id = ? AND tenant_id = ?', [data.payeePartyId, tenantId]);
       payeeDimId = p?.floating_dimension_id;
     }
 
@@ -172,7 +173,7 @@ export class ChequesService {
       `INSERT INTO cheque_status_history (id, cheque_id, from_status, to_status, action_date_shamsi, journal_entry_id, description, created_by_user_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        `hist-${Date.now()}`,
+        randomUUID(),
         chequeId,
         'NONE',
         initialStatus,
@@ -221,7 +222,7 @@ export class ChequesService {
     // واکشی تفصیلی صادرکننده
     let drawerDimId: string | undefined;
     if (cheque.drawer_party_id) {
-      const p = await this.db.queryOne('SELECT floating_dimension_id FROM parties WHERE id = ?', [cheque.drawer_party_id]);
+      const p = await this.db.queryOne('SELECT floating_dimension_id FROM parties WHERE id = ? AND tenant_id = ?', [cheque.drawer_party_id, tenantId]);
       drawerDimId = p?.floating_dimension_id;
     }
 
@@ -292,8 +293,8 @@ export class ChequesService {
 
     // به‌روزرسانی وضعیت چک
     await this.db.run(
-      `UPDATE cheques SET current_status = ?, latest_journal_entry_id = ?, updated_at = ? WHERE id = ?`,
-      [data.toStatus, journalEntryId || cheque.latest_journal_entry_id, now, chequeId]
+      `UPDATE cheques SET current_status = ?, latest_journal_entry_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+      [data.toStatus, journalEntryId || cheque.latest_journal_entry_id, now, chequeId, tenantId]
     );
 
     // ثبت تاریخچه
@@ -301,7 +302,7 @@ export class ChequesService {
       `INSERT INTO cheque_status_history (id, cheque_id, from_status, to_status, action_date_shamsi, journal_entry_id, description, created_by_user_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        `hist-${Date.now()}`,
+        randomUUID(),
         chequeId,
         fromStatus,
         data.toStatus,

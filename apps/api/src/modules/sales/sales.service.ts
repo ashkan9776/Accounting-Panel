@@ -1,7 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import {
   ProductType,
   ValuationMethod,
@@ -20,7 +22,8 @@ export class SalesService {
   constructor(
     private readonly db: DatabaseService,
     private readonly journalService: JournalEntriesService,
-    private readonly inventoryService: InventoryService
+    private readonly inventoryService: InventoryService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   async createSalesInvoice(
@@ -62,7 +65,7 @@ export class SalesService {
       throw new NotFoundException(`مشتری با شناسه ${data.customerPartyId} یافت نشد.`);
     }
 
-    const salesId = `sal-${Date.now()}`;
+    const salesId = randomUUID();
     const now = new Date().toISOString();
     const docType = data.documentType || 'INVOICE';
 
@@ -170,6 +173,13 @@ export class SalesService {
 
     // ۳. صدور سند دوبل فروش و سند بهای تمام‌شده فقط برای فاکتور قطعی (INVOICE)
     if (docType === 'INVOICE') {
+      const [arAccountId, salesRevenueAccountId, discountAccountId, vatOutputAccountId] = await Promise.all([
+        this.accountMapping.getAccount(tenantId, companyId, 'AR'),
+        this.accountMapping.getAccount(tenantId, companyId, 'SALES_REVENUE'),
+        this.accountMapping.getAccount(tenantId, companyId, 'SALES_DISCOUNT'),
+        this.accountMapping.getAccount(tenantId, companyId, 'VAT_OUTPUT'),
+      ]);
+
       // الف) سند شناسایی درآمد فروش، بدهکاران، تخفیفات و ارزش افزوده
       const salesLines = InventoryPostingEngine.buildSalesInvoiceLines({
         customerPartyDimensionId: customer.floating_dimension_id,
@@ -178,7 +188,11 @@ export class SalesService {
         vatAmount: totalVat.toFixed(0),
         costCenterDimensionId: data.costCenterDimensionId,
         invoiceNumber: data.documentNumber,
-        descriptionSuffix: `فروش به ${customer.name}`
+        descriptionSuffix: `فروش به ${customer.name}`,
+        arAccountId,
+        salesRevenueAccountId,
+        discountAccountId,
+        vatOutputAccountId
       });
 
       const salesEntry = await this.journalService.createEntry(
@@ -200,11 +214,18 @@ export class SalesService {
 
       // ب) سند بهای تمام‌شده کالای فروش‌رفته (COGS: بدهکار ۷۱۰۱ / بستانکار ۱۵۰۱)
       if (totalCogs.greaterThan(0)) {
+        const [cogsAccountId, inventoryAccountId] = await Promise.all([
+          this.accountMapping.getAccount(tenantId, companyId, 'COGS'),
+          this.accountMapping.getAccount(tenantId, companyId, 'INVENTORY'),
+        ]);
+
         const cogsLines = InventoryPostingEngine.buildCogsLines({
           cogsAmount: totalCogs.toFixed(0),
           costCenterDimensionId: data.costCenterDimensionId,
           documentNumber: data.documentNumber,
-          descriptionSuffix: `بهای تمام شده فاکتور ${data.documentNumber}`
+          descriptionSuffix: `بهای تمام شده فاکتور ${data.documentNumber}`,
+          cogsAccountId,
+          inventoryAccountId
         });
 
         const cogsEntry = await this.journalService.createEntry(
@@ -226,63 +247,65 @@ export class SalesService {
       }
     }
 
-    // ۴. ثبت سربرگ و اقلام در دیتابیس
-    await this.db.run(
-      `INSERT INTO sales_documents (
-        id, tenant_id, company_id, branch_id, warehouse_id, customer_party_id,
-        document_number, document_type, date_shamsi, gross_amount, discount_amount,
-        net_amount, vat_amount, grand_total, cogs_total, status,
-        sales_journal_entry_id, cogs_journal_entry_id, payment_method,
-        description, created_by_user_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?, ?, ?)`,
-      [
-        salesId,
-        tenantId,
-        companyId,
-        branchId,
-        data.warehouseId || null,
-        data.customerPartyId,
-        data.documentNumber,
-        docType,
-        data.dateShamsi,
-        totalGrossAmount.toFixed(0),
-        overallDiscount.toFixed(0),
-        netAmount.toFixed(0),
-        totalVat.toFixed(0),
-        grandTotal.toFixed(0),
-        totalCogs.toFixed(0),
-        salesJournalEntryId || null,
-        cogsJournalEntryId || null,
-        data.paymentMethod || 'CREDIT',
-        data.description || null,
-        userId,
-        now
-      ]
-    );
-
-    for (const item of processedItems) {
-      await this.db.run(
-        `INSERT INTO sales_document_items (
-          id, sales_document_id, product_id, variant_id, quantity, unit_price,
-          total_price, discount_amount, net_amount, vat_amount, unit_cogs, total_cogs, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    // ۴. ثبت سربرگ و اقلام در دیتابیس در قالب تراکنش اتمیک
+    await this.db.transaction(async (tx) => {
+      await tx.run(
+        `INSERT INTO sales_documents (
+          id, tenant_id, company_id, branch_id, warehouse_id, customer_party_id,
+          document_number, document_type, date_shamsi, gross_amount, discount_amount,
+          net_amount, vat_amount, grand_total, cogs_total, status,
+          sales_journal_entry_id, cogs_journal_entry_id, payment_method,
+          description, created_by_user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?, ?, ?)`,
         [
-          item.id,
           salesId,
-          item.productId,
-          item.variantId || null,
-          item.quantity,
-          item.unitPrice,
-          item.totalPrice,
-          item.discountAmount,
-          item.netAmount,
-          item.vatAmount,
-          item.unitCogs,
-          item.totalCogs,
+          tenantId,
+          companyId,
+          branchId,
+          data.warehouseId || null,
+          data.customerPartyId,
+          data.documentNumber,
+          docType,
+          data.dateShamsi,
+          totalGrossAmount.toFixed(0),
+          overallDiscount.toFixed(0),
+          netAmount.toFixed(0),
+          totalVat.toFixed(0),
+          grandTotal.toFixed(0),
+          totalCogs.toFixed(0),
+          salesJournalEntryId || null,
+          cogsJournalEntryId || null,
+          data.paymentMethod || 'CREDIT',
+          data.description || null,
+          userId,
           now
         ]
       );
-    }
+
+      for (const item of processedItems) {
+        await tx.run(
+          `INSERT INTO sales_document_items (
+            id, sales_document_id, product_id, variant_id, quantity, unit_price,
+            total_price, discount_amount, net_amount, vat_amount, unit_cogs, total_cogs, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            item.id,
+            salesId,
+            item.productId,
+            item.variantId || null,
+            item.quantity,
+            item.unitPrice,
+            item.totalPrice,
+            item.discountAmount,
+            item.netAmount,
+            item.vatAmount,
+            item.unitCogs,
+            item.totalCogs,
+            now
+          ]
+        );
+      }
+    });
 
     return {
       id: salesId,
@@ -324,8 +347,8 @@ export class SalesService {
     }
 
     const customer = await this.db.queryOne(
-      'SELECT id, name, floating_dimension_id FROM parties WHERE id = ?',
-      [originalSales.customer_party_id]
+      'SELECT id, name, floating_dimension_id FROM parties WHERE id = ? AND tenant_id = ?',
+      [originalSales.customer_party_id, tenantId]
     );
 
     let totalReturnedGross = new Decimal(0);

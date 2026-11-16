@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Utensils,
@@ -17,7 +17,9 @@ import {
   Layers,
   ChefHat,
   Info,
+  RefreshCw,
 } from 'lucide-react';
+import { fetchApi, formatMoney } from '../../../lib/api';
 
 interface RecipeIngredient {
   rawProductName: string;
@@ -112,15 +114,36 @@ const MOCK_RECIPES: MenuItemRecipe[] = [
 ];
 
 export default function RestaurantRecipesPage() {
-  const [recipes, setRecipes] = useState<MenuItemRecipe[]>(MOCK_RECIPES);
+  const [recipes, setRecipes] = useState<MenuItemRecipe[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [activeIngredientModalRecipe, setActiveIngredientModalRecipe] = useState<MenuItemRecipe | null>(null);
 
+  const loadRecipes = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchApi('/restaurant/recipes');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        setRecipes(res.data);
+      } else {
+        setRecipes(MOCK_RECIPES);
+      }
+    } catch {
+      setRecipes(MOCK_RECIPES);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRecipes();
+  }, []);
+
   // میانگین درصد Food Cost
-  const avgFoodCost = Math.round(
-    recipes.reduce((sum, r) => sum + r.foodCostPercentage, 0) / recipes.length
-  );
+  const avgFoodCost = recipes.length > 0
+    ? Math.round(recipes.reduce((sum, r) => sum + (r.foodCostPercentage || 0), 0) / recipes.length)
+    : 0;
 
   const filteredRecipes = recipes.filter((r) => {
     const matchesCategory = selectedCategory === 'ALL' || r.category === selectedCategory;

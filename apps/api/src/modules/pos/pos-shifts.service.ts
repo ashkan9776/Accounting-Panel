@@ -1,11 +1,14 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import {
   PosShiftStatus,
   CashMovementType,
   PosPostingEngine,
-  JournalEntryType
+  JournalEntryType,
+  formatToShamsiString
 } from '@accounting/core';
 import Decimal from 'decimal.js';
 
@@ -15,7 +18,8 @@ Decimal.set({ precision: 28, rounding: Decimal.ROUND_HALF_UP });
 export class PosShiftsService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly journalService: JournalEntriesService
+    private readonly journalService: JournalEntriesService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   // ۱. باز کردن شیفت صندوق
@@ -41,12 +45,22 @@ export class PosShiftsService {
       return activeShift;
     }
 
+    // اعتبارسنجی باز بودن سال مالی و دوره مالی
+    const todayShamsi = formatToShamsiString(new Date());
+    const activeFy = await this.db.queryOne(
+      `SELECT * FROM fiscal_years WHERE tenant_id = ? AND company_id = ? AND is_closed = 0 AND is_locked = 0 LIMIT 1`,
+      [tenantId, companyId]
+    );
+    if (!activeFy) {
+      throw new BadRequestException('سال مالی باز و فعالی جهت افتتاح شیفت صندوق یافت نشد.');
+    }
+
     const maxShiftRow = await this.db.queryOne(
       'SELECT COUNT(*) as count FROM pos_shifts WHERE tenant_id = ? AND company_id = ?',
       [tenantId, companyId]
     );
     const shiftNumber = `SHF-${Date.now().toString().substring(6)}-${(maxShiftRow?.count || 0) + 1}`;
-    const id = `shift-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     const openingBal = new Decimal(data.openingCashBalance || 0);
 
@@ -76,6 +90,20 @@ export class PosShiftsService {
     );
 
     return this.getShift(tenantId, companyId, id);
+  }
+
+  // ۱.۱. فهرست کلیه شیفت‌های صندوق
+  async listShifts(tenantId: string, companyId: string) {
+    return this.db.query(
+      `SELECT ps.*, cd.title as cash_desk_title, pt.title as pos_terminal_title, u.full_name as cashier_name
+       FROM pos_shifts ps
+       LEFT JOIN cash_desks cd ON ps.cash_desk_id = cd.id
+       LEFT JOIN pos_terminals pt ON ps.pos_terminal_id = pt.id
+       LEFT JOIN users u ON ps.cashier_user_id = u.id
+       WHERE ps.tenant_id = ? AND ps.company_id = ?
+       ORDER BY ps.opened_at DESC`,
+      [tenantId, companyId]
+    );
   }
 
   // ۲. استعلام شیفت باز کاربر
@@ -116,7 +144,7 @@ export class PosShiftsService {
       throw new BadRequestException('مبلغ واریز یا برداشت صندوق باید بزرگتر از صفر باشد.');
     }
 
-    const id = `csh-mov-${Date.now()}`;
+    const id = randomUUID();
     const now = new Date().toISOString();
     const dateShamsi = data.dateShamsi || '1403/11/15';
 
@@ -212,6 +240,24 @@ export class PosShiftsService {
     const cashDimId = cashDesk?.floating_dimension_id || 'dim-cash-1';
     const posDimId = posTerminal?.floating_dimension_id || 'dim-pos-1';
 
+    const [
+      cashAccountId,
+      posInTransitAccountId,
+      discountAccountId,
+      salesRevenueAccountId,
+      vatOutputAccountId,
+      cogsAccountId,
+      inventoryAccountId
+    ] = await Promise.all([
+      this.accountMapping.getAccount(tenantId, companyId, 'CASH', 'sub-1101'),
+      this.accountMapping.getAccount(tenantId, companyId, 'POS_IN_TRANSIT', 'sub-1104'),
+      this.accountMapping.getAccount(tenantId, companyId, 'SALES_DISCOUNT', 'sub-6201'),
+      this.accountMapping.getAccount(tenantId, companyId, 'SALES_REVENUE', 'sub-6101'),
+      this.accountMapping.getAccount(tenantId, companyId, 'VAT_OUTPUT', 'sub-3306'),
+      this.accountMapping.getAccount(tenantId, companyId, 'COGS', 'sub-7101'),
+      this.accountMapping.getAccount(tenantId, companyId, 'INVENTORY', 'sub-1501')
+    ]);
+
     // صدور سند تجمیعی شیفت در صورتی که فروشی ثبت شده باشد
     let dailyJournalEntryId: string | undefined;
     let cogsJournalEntryId: string | undefined;
@@ -229,7 +275,14 @@ export class PosShiftsService {
         totalPosCardSales: shift.total_pos_card_sales,
         totalDiscount: shift.total_discount_amount,
         totalGrossSales: new Decimal(shift.total_sales_amount).plus(new Decimal(shift.total_discount_amount)).minus(new Decimal(shift.total_vat_amount)).toFixed(0),
-        totalVat: shift.total_vat_amount
+        totalVat: shift.total_vat_amount,
+        accountOverrides: {
+          cashAccountId,
+          posInTransitAccountId,
+          discountAccountId,
+          salesRevenueAccountId,
+          vatOutputAccountId
+        }
       });
 
       const entry = await this.journalService.createEntry(
@@ -255,7 +308,12 @@ export class PosShiftsService {
         const cogsLines = PosPostingEngine.buildConsolidatedCogsLines(
           shift.shift_number,
           dateShamsi,
-          cogsAmt.toFixed(0)
+          cogsAmt.toFixed(0),
+          undefined,
+          {
+            cogsAccountId,
+            inventoryAccountId
+          }
         );
 
         const cogsEntry = await this.journalService.createEntry(
@@ -283,7 +341,11 @@ export class PosShiftsService {
         shift.shift_number,
         dateShamsi,
         cashDimId,
-        discrepancy.toFixed(0)
+        discrepancy.toFixed(0),
+        undefined,
+        {
+          cashAccountId
+        }
       );
 
       const discEntry = await this.journalService.createEntry(

@@ -322,6 +322,29 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     expect(whRes.body.data.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('Step 12.1 (Phase 3): Should create a new product without 500 error even with fallback unitId', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/inventory/products')
+      .set('Authorization', `Bearer ${jwtToken}`)
+      .set('x-tenant-id', 'tenant-pishro')
+      .set('x-company-id', 'comp-pishro-1')
+      .send({
+        code: 'PRD-1953',
+        name: 'برنج اعلا شمالی تست',
+        unitId: 'unit-piece',
+        type: 'GOODS',
+        sellPrice: 15000000,
+        purchasePrice: 10000000,
+        taxExempt: false,
+        vatRate: 0.10,
+      })
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBeDefined();
+    expect(res.body.data.name).toBe('برنج اعلا شمالی تست');
+  });
+
   it('Step 13 (Phase 3): Should create a purchase document with Landed Cost (freight) and VAT', async () => {
     const purchaseData = {
       warehouseId: 'wh-main',

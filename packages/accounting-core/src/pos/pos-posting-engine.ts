@@ -27,7 +27,7 @@ export class PosPostingEngine {
     // سطر بدهکار: دریافت‌های نقدی صندوق
     if (cash.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-1101', // صندوق‌ها
+        subsidiaryAccountId: ctx.accountOverrides?.cashAccountId || 'sub-1101', // صندوق‌ها
         floatingDimension1Id: ctx.cashDeskDimensionId,
         debit: cash.toFixed(0),
         credit: 0,
@@ -38,7 +38,7 @@ export class PosPostingEngine {
     // سطر بدهکار: دریافت‌های کارتخوان‌های POS
     if (pos.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-1104', // وجوه در راه کارتخوان‌ها
+        subsidiaryAccountId: ctx.accountOverrides?.posInTransitAccountId || 'sub-1104', // وجوه در راه کارتخوان‌ها
         floatingDimension1Id: ctx.posTerminalDimensionId,
         debit: pos.toFixed(0),
         credit: 0,
@@ -49,7 +49,7 @@ export class PosPostingEngine {
     // سطر بدهکار: تخفیفات اعطایی شیفت
     if (disc.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-6201', // تخفیفات نقدی فروش
+        subsidiaryAccountId: ctx.accountOverrides?.discountAccountId || 'sub-6201', // تخفیفات نقدی فروش
         debit: disc.toFixed(0),
         credit: 0,
         description: `${desc} - تخفیفات اعطایی صندوق`
@@ -58,7 +58,7 @@ export class PosPostingEngine {
 
     // سطر بستانکار: درآمد فروش کالا و محصولات
     lines.push({
-      subsidiaryAccountId: 'sub-6101', // فروش کالا و محصولات
+      subsidiaryAccountId: ctx.accountOverrides?.salesRevenueAccountId || 'sub-6101', // فروش کالا و محصولات
       floatingDimension2Id: ctx.costCenterDimensionId,
       debit: 0,
       credit: gross.toFixed(0),
@@ -68,7 +68,7 @@ export class PosPostingEngine {
     // سطر بستانکار: مالیات بر ارزش افزوده فروش
     if (vat.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-3306', // مالیات بر ارزش افزوده فروش
+        subsidiaryAccountId: ctx.accountOverrides?.vatOutputAccountId || 'sub-3306', // مالیات بر ارزش افزوده فروش
         debit: 0,
         credit: vat.toFixed(0),
         description: `${desc} - ارزش افزوده فروش`
@@ -87,7 +87,11 @@ export class PosPostingEngine {
     shiftNumber: string,
     dateShamsi: string,
     totalCogsAmount: string | number,
-    costCenterDimensionId?: string
+    costCenterDimensionId?: string,
+    accountOverrides?: {
+      cogsAccountId?: string;
+      inventoryAccountId?: string;
+    }
   ): JournalLineInput[] {
     const cogs = new Decimal(totalCogsAmount);
     if (cogs.lessThanOrEqualTo(0)) {
@@ -98,14 +102,14 @@ export class PosPostingEngine {
 
     return [
       {
-        subsidiaryAccountId: 'sub-7101', // بهای تمام‌شده کالای فروش‌رفته (COGS)
+        subsidiaryAccountId: accountOverrides?.cogsAccountId || 'sub-7101', // بهای تمام‌شده کالای فروش‌رفته (COGS)
         floatingDimension2Id: costCenterDimensionId,
         debit: cogs.toFixed(0),
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1501', // موجودی کالای تجاری
+        subsidiaryAccountId: accountOverrides?.inventoryAccountId || 'sub-1501', // موجودی کالای تجاری
         debit: 0,
         credit: cogs.toFixed(0),
         description: desc
@@ -121,7 +125,12 @@ export class PosPostingEngine {
     dateShamsi: string,
     cashDeskDimensionId: string,
     discrepancyAmount: string | number,
-    costCenterDimensionId?: string
+    costCenterDimensionId?: string,
+    accountOverrides?: {
+      cashDeficitAccountId?: string;
+      cashSurplusAccountId?: string;
+      cashAccountId?: string;
+    }
   ): JournalLineInput[] {
     const disc = new Decimal(discrepancyAmount);
     if (disc.isZero()) {
@@ -135,14 +144,14 @@ export class PosPostingEngine {
       const desc = `کسری نقدینگی صندوق در پایان شیفت شماره ${shiftNumber} مورخ ${dateShamsi}`;
       return [
         {
-          subsidiaryAccountId: 'sub-8108', // هزینه کسری صندوق و انبار
+          subsidiaryAccountId: accountOverrides?.cashDeficitAccountId || 'sub-8108', // هزینه کسری صندوق و انبار
           floatingDimension2Id: costCenterDimensionId,
           debit: absDisc,
           credit: 0,
           description: desc
         },
         {
-          subsidiaryAccountId: 'sub-1101', // صندوق‌ها
+          subsidiaryAccountId: accountOverrides?.cashAccountId || 'sub-1101', // صندوق‌ها
           floatingDimension1Id: cashDeskDimensionId,
           debit: 0,
           credit: absDisc,
@@ -154,14 +163,14 @@ export class PosPostingEngine {
       const desc = `فزونی نقدینگی صندوق در پایان شیفت شماره ${shiftNumber} مورخ ${dateShamsi}`;
       return [
         {
-          subsidiaryAccountId: 'sub-1101', // صندوق‌ها
+          subsidiaryAccountId: accountOverrides?.cashAccountId || 'sub-1101', // صندوق‌ها
           floatingDimension1Id: cashDeskDimensionId,
           debit: absDisc,
           credit: 0,
           description: desc
         },
         {
-          subsidiaryAccountId: 'sub-6105', // سایر درآمدهای عملیاتی
+          subsidiaryAccountId: accountOverrides?.cashSurplusAccountId || 'sub-6105', // سایر درآمدهای عملیاتی
           debit: 0,
           credit: absDisc,
           description: desc

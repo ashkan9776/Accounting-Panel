@@ -24,6 +24,15 @@ export class PayrollPostingEngine {
       employeePartyDimensionId?: string;
       costCenterDimensionId?: string;
     }>;
+    accountOverrides?: {
+      salaryExpenseId?: string;
+      employerInsuranceExpenseId?: string;
+      insurancePayableId?: string;
+      taxPayableId?: string;
+      advancePayableId?: string;
+      loanPayableId?: string;
+      salaryPayableId?: string;
+    };
   }): JournalLineInput[] {
     if (!params.slips || params.slips.length === 0) {
       return [];
@@ -62,7 +71,7 @@ export class PayrollPostingEngine {
       // سطر بستانکار خالص حقوق برای هر کارمند با تفصیلی شخص
       if (net.greaterThan(0)) {
         netPayableLines.push({
-          subsidiaryAccountId: 'sub-3303', // جاری پرسنل و حقوق پرداختنی
+          subsidiaryAccountId: params.accountOverrides?.salaryPayableId || 'sub-3303', // جاری پرسنل و حقوق پرداختنی
           floatingDimension1Id: item.employeePartyDimensionId,
           floatingDimension2Id: item.costCenterDimensionId,
           debit: 0,
@@ -74,7 +83,7 @@ export class PayrollPostingEngine {
       // تسویه مساعده با تفصیلی شخص
       if (adv.greaterThan(0)) {
         advanceLines.push({
-          subsidiaryAccountId: 'sub-1404', // مساعده و علی‌الحساب
+          subsidiaryAccountId: params.accountOverrides?.advancePayableId || 'sub-1404', // مساعده و علی‌الحساب
           floatingDimension1Id: item.employeePartyDimensionId,
           debit: 0,
           credit: adv.toFixed(0),
@@ -85,7 +94,7 @@ export class PayrollPostingEngine {
       // تسویه اقساط وام با تفصیلی شخص
       if (loan.greaterThan(0)) {
         loanLines.push({
-          subsidiaryAccountId: 'sub-1405', // وام‌های پرداختی به کارکنان
+          subsidiaryAccountId: params.accountOverrides?.loanPayableId || 'sub-1405', // وام‌های پرداختی به کارکنان
           floatingDimension1Id: item.employeePartyDimensionId,
           debit: 0,
           credit: loan.toFixed(0),
@@ -101,7 +110,7 @@ export class PayrollPostingEngine {
     // ۱. سطر بدهکار: هزینه حقوق و دستمزد ناخالص
     if (totalGrossPay.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-8101', // هزینه حقوق و دستمزد
+        subsidiaryAccountId: params.accountOverrides?.salaryExpenseId || 'sub-8101', // هزینه حقوق و دستمزد
         floatingDimension2Id: defaultCostCenter,
         debit: totalGrossPay.toFixed(0),
         credit: 0,
@@ -112,7 +121,7 @@ export class PayrollPostingEngine {
     // ۲. سطر بدهکار: هزینه بیمه سهم کارفرما ۲۳٪
     if (totalEmployerInsurance.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-8102', // هزینه بیمه سهم کارفرما ۲۳٪
+        subsidiaryAccountId: params.accountOverrides?.employerInsuranceExpenseId || 'sub-8102', // هزینه بیمه سهم کارفرما ۲۳٪
         floatingDimension2Id: defaultCostCenter,
         debit: totalEmployerInsurance.toFixed(0),
         credit: 0,
@@ -123,7 +132,7 @@ export class PayrollPostingEngine {
     // ۳. سطر بستانکار: بیمه پرداختنی سازمان تامین اجتماعی ۳۰٪
     if (totalInsuranceContribution.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-3304', // بیمه پرداختنی
+        subsidiaryAccountId: params.accountOverrides?.insurancePayableId || 'sub-3304', // بیمه پرداختنی
         debit: 0,
         credit: totalInsuranceContribution.toFixed(0),
         description: `${desc} - بیمه ۳۰٪ پرداختنی سازمان تامین اجتماعی`
@@ -133,7 +142,7 @@ export class PayrollPostingEngine {
     // ۴. سطر بستانکار: مالیات تکلیفی حقوق پرداختنی (ماده ۸۶)
     if (totalIncomeTax.greaterThan(0)) {
       lines.push({
-        subsidiaryAccountId: 'sub-3305', // مالیات تکلیفی حقوق پرداختنی
+        subsidiaryAccountId: params.accountOverrides?.taxPayableId || 'sub-3305', // مالیات تکلیفی حقوق پرداختنی
         debit: 0,
         credit: totalIncomeTax.toFixed(0),
         description: `${desc} - مالیات حقوق پرداختنی به اداره امور مالیاتی`
@@ -164,6 +173,7 @@ export class PayrollPostingEngine {
     bankAccountSubsidiaryId?: string; // پیش‌فرض sub-1102
     bankFloatingDimensionId?: string;
     staffPartyDimensionId?: string;
+    salaryPayableAccountId?: string; // پیش‌فرض sub-3303
     slips?: Array<{
       employeePartyDimensionId?: string;
       netPayableAmount: string | number;
@@ -176,13 +186,14 @@ export class PayrollPostingEngine {
 
     const desc = `پرداخت گروهی و واریز پایا خالص حقوق پرسنل بابت ${params.periodTitle} مورخ ${params.dateShamsi}`;
     const lines: JournalLineInput[] = [];
+    const salaryPayableId = params.salaryPayableAccountId || 'sub-3303';
 
     if (params.slips && params.slips.length > 0) {
       for (const s of params.slips) {
         const sNet = new Decimal(s.netPayableAmount);
         if (sNet.greaterThan(0)) {
           lines.push({
-            subsidiaryAccountId: 'sub-3303', // جاری پرسنل و حقوق پرداختنی
+            subsidiaryAccountId: salaryPayableId, // جاری پرسنل و حقوق پرداختنی
             floatingDimension1Id: s.employeePartyDimensionId || params.staffPartyDimensionId || 'dim-cust-1',
             debit: sNet.toFixed(0),
             credit: 0,
@@ -192,7 +203,7 @@ export class PayrollPostingEngine {
       }
     } else {
       lines.push({
-        subsidiaryAccountId: 'sub-3303', // جاری پرسنل و حقوق پرداختنی
+        subsidiaryAccountId: salaryPayableId, // جاری پرسنل و حقوق پرداختنی
         floatingDimension1Id: params.staffPartyDimensionId || 'dim-cust-1',
         debit: amt.toFixed(0),
         credit: 0,

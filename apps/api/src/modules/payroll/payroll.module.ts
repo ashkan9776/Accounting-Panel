@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { DatabaseService } from '../../database/database.service';
 import { AccountingModule } from '../accounting/accounting.module';
 import { EmployeesService } from './employees.service';
 import { PayrollService } from './payroll.service';
@@ -9,7 +8,6 @@ import { PayrollController } from './payroll.controller';
   imports: [AccountingModule],
   controllers: [PayrollController],
   providers: [
-    DatabaseService,
     EmployeesService,
     PayrollService
   ],

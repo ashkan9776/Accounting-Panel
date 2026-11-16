@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { VisitorSalesEngine } from '@accounting/core';
 import Decimal from 'decimal.js';
@@ -80,7 +81,7 @@ export class VisitorService {
       200 // شعاع مجاز ۲۰۰ متر
     );
 
-    const visitId = `visit-${Date.now()}`;
+    const visitId = randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(

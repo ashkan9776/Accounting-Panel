@@ -73,7 +73,8 @@ export interface IncomeStatementReport {
   profitBeforeTax: string;                  // سود (زیان) قبل از مالیات
 
   // ۴. مالیات و سود خالص نهایی
-  incomeTaxProvision: string;               // مالیات بر درآمد عملکرد (ماده ۱۰۵)
+  incomeTaxProvision: string;               // مالیات بر درآمد عملکرد ثبت‌شده در دفاتر (ماده ۱۰۵)
+  estimatedTaxProvision?: string;          // مالیات تخمینی عملکرد (یادداشت توضیحی بر مبنای ۲۵٪)
   netIncome: string;                        // سود (زیان) خالص دوره
   isProfitable: boolean;                    // آیا شرکت سودده است؟
 }

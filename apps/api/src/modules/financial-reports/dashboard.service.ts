@@ -23,7 +23,7 @@ export class DashboardService {
     asOfDateShamsi?: string
   ): Promise<ExecutiveDashboardReport> {
     const asOfDate = asOfDateShamsi || '1403/12/29';
-    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ?', [companyId]);
+    const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ? AND tenant_id = ?', [companyId, tenantId]);
 
     // ۱. استعلام موجودی نقد و بانک جاری (کد ۱۱)
     const cashQuery = await this.db.queryOne(

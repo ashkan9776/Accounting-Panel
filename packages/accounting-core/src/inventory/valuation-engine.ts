@@ -120,14 +120,19 @@ export class ValuationEngine {
       const updatedLayers: FifoLayer[] = [];
 
       for (const layer of currentState.fifoLayers || []) {
-        const layerRemaining = new Decimal(layer.remainingQuantity);
-        if (layerRemaining.isZero() || remainingToConsume.isZero()) {
+        const layerRemaining = new Decimal(layer.remainingQuantity || 0);
+        const layerCost = new Decimal(layer.unitCost || 0);
+
+        if (layerRemaining.lessThanOrEqualTo(0) || layerCost.isNegative()) {
+          continue;
+        }
+
+        if (remainingToConsume.isZero()) {
           updatedLayers.push(layer);
           continue;
         }
 
         const consumeFromLayer = Decimal.min(layerRemaining, remainingToConsume);
-        const layerCost = new Decimal(layer.unitCost);
         totalCogs = totalCogs.plus(consumeFromLayer.times(layerCost));
 
         remainingToConsume = remainingToConsume.minus(consumeFromLayer);
@@ -141,10 +146,9 @@ export class ValuationEngine {
         }
       }
 
-      // اگر مقداری بیش از لایه‌های موجود بود، با بهای آخرین لایه یا میانگین محاسبه می‌شود
+      // اگر مقداری بیش از لایه‌های معتبر موجود در انبار درخواست شده باشد، خطا پرتاب می‌شود
       if (remainingToConsume.greaterThan(0)) {
-        const fallbackCost = new Decimal(currentState.averageCost || 0);
-        totalCogs = totalCogs.plus(remainingToConsume.times(fallbackCost));
+        throw new Error('موجودی انبار برای صدور حواله خروج کافی نیست.');
       }
 
       const newQty = prevQty.minus(outQty);

@@ -7,13 +7,15 @@ import * as path from 'path';
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private db: sqlite3.Database;
   private dbPath: string;
+  private transactionQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     const storageDir = path.resolve(process.cwd(), 'storage');
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
     this.dbPath = process.env.DATABASE_PATH || path.join(storageDir, 'accounting.db');
+    const targetDir = path.dirname(this.dbPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
   }
 
   async onModuleInit() {
@@ -29,10 +31,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return new Promise((resolve, reject) => {
       this.db = new sqlite3.Database(this.dbPath, (err) => {
         if (err) return reject(err);
-        this.db.run('PRAGMA foreign_keys = ON;', (pragmaErr) => {
-          if (pragmaErr) return reject(pragmaErr);
-          resolve();
-        });
+        this.db.exec(
+          `PRAGMA foreign_keys = ON;
+           PRAGMA journal_mode = WAL;
+           PRAGMA busy_timeout = 5000;`,
+          (pragmaErr) => {
+            if (pragmaErr) return reject(pragmaErr);
+            resolve();
+          }
+        );
       });
     });
   }
@@ -91,15 +98,38 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * قفل ترتیبی (Mutex Queue) جهت جلوگیری از تداخل تراکنش‌های همزمان در SQLite
+   */
+  private async acquireTransactionLock(): Promise<() => void> {
+    let releaseLock: () => void;
+    const currentLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const previousLock = this.transactionQueue;
+    this.transactionQueue = previousLock.then(() => currentLock);
+    await previousLock;
+    return releaseLock!;
+  }
+
   public async transaction<T>(fn: (db: DatabaseService) => Promise<T>): Promise<T> {
-    await this.run('BEGIN TRANSACTION');
+    const release = await this.acquireTransactionLock();
     try {
-      const result = await fn(this);
-      await this.run('COMMIT');
-      return result;
-    } catch (error) {
-      await this.run('ROLLBACK');
-      throw error;
+      await this.run('BEGIN IMMEDIATE TRANSACTION');
+      try {
+        const result = await fn(this);
+        await this.run('COMMIT');
+        return result;
+      } catch (error) {
+        try {
+          await this.run('ROLLBACK');
+        } catch {
+          // در صورتی که تراکنش قبلاً رول‌بک شده باشد خطا نادیده گرفته می‌شود
+        }
+        throw error;
+      }
+    } finally {
+      release();
     }
   }
 }

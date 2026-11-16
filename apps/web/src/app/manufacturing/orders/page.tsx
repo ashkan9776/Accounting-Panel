@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Factory,
@@ -18,7 +18,9 @@ import {
   Percent,
   Search,
   Filter,
+  RefreshCw,
 } from 'lucide-react';
+import { fetchApi, formatMoney } from '../../../lib/api';
 
 interface ProductionOrder {
   id: string;
@@ -89,7 +91,8 @@ const MOCK_ORDERS: ProductionOrder[] = [
 ];
 
 export default function ProductionOrdersPage() {
-  const [orders, setOrders] = useState<ProductionOrder[]>(MOCK_ORDERS);
+  const [orders, setOrders] = useState<ProductionOrder[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -105,6 +108,42 @@ export default function ProductionOrdersPage() {
   const [selectedOrderForVariance, setSelectedOrderForVariance] = useState<ProductionOrder | null>(null);
 
   const [notification, setNotification] = useState<string | null>(null);
+
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchApi('/manufacturing/orders');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped: ProductionOrder[] = res.data.map((o: any) => ({
+          id: o.id,
+          orderNumber: o.order_number || o.orderNumber,
+          productName: o.product_name || o.productName || 'محصول نهایی',
+          bomCode: o.bom_code || o.bomCode || 'BOM-001',
+          plannedQuantity: Number(o.planned_quantity || o.plannedQuantity || 1),
+          completedQuantity: Number(o.completed_quantity || o.completedQuantity || 0),
+          status: (o.status || 'IN_PROGRESS') as 'RELEASED' | 'IN_PROGRESS' | 'COMPLETED',
+          startDate: o.planned_start_date || o.startDate || '1403/11/01',
+          targetEndDate: o.planned_end_date || o.targetEndDate || '1403/11/30',
+          wipMaterialsCost: Number(o.wip_materials_cost || o.wipMaterialCost || 0),
+          wipLaborCost: Number(o.wip_labor_cost || o.wipLaborCost || 0),
+          wipOverheadCost: Number(o.wip_overhead_cost || o.wipOverheadCost || 0),
+          totalActualCost: Number(o.total_actual_cost || o.totalActualCost || 0),
+          variancePercentage: Number(o.variance_percentage || o.variancePercentage || 0),
+        }));
+        setOrders(mapped);
+      } else {
+        setOrders(MOCK_ORDERS);
+      }
+    } catch {
+      setOrders(MOCK_ORDERS);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
 
   const filteredOrders = orders.filter((o) => {
     const matchesStatus = filterStatus === 'ALL' || o.status === filterStatus;

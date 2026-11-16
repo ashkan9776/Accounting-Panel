@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 
 @Injectable()
@@ -23,7 +24,7 @@ export class WorkCentersService {
       throw new BadRequestException('کد و نام مرکز کاری الزامی است.');
     }
 
-    const id = data.id || `wc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const id = data.id || randomUUID();
     const now = new Date().toISOString();
 
     await this.db.run(

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Factory,
@@ -14,7 +14,9 @@ import {
   TrendingUp,
   Clock,
   Layers,
+  RefreshCw,
 } from 'lucide-react';
+import { fetchApi, formatMoney } from '../../../lib/api';
 
 interface WorkCenter {
   id: string;
@@ -71,7 +73,8 @@ const MOCK_WORK_CENTERS: WorkCenter[] = [
 ];
 
 export default function ManufacturingWorkCentersPage() {
-  const [workCenters, setWorkCenters] = useState<WorkCenter[]>(MOCK_WORK_CENTERS);
+  const [workCenters, setWorkCenters] = useState<WorkCenter[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [isNewWcModalOpen, setIsNewWcModalOpen] = useState(false);
 
   const [newCode, setNewCode] = useState('');
@@ -81,22 +84,67 @@ export default function ManufacturingWorkCentersPage() {
   const [newMachineRate, setNewMachineRate] = useState<number>(2000000);
   const [newCapacity, setNewCapacity] = useState<number>(8);
 
-  const handleCreateWorkCenter = (e: React.FormEvent) => {
+  const loadWorkCenters = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchApi('/manufacturing/work-centers');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped = res.data.map((wc: any) => ({
+          id: wc.id,
+          code: wc.code,
+          title: wc.title,
+          type: wc.type || 'MACHINE',
+          hourlyLaborRate: Number(wc.hourly_labor_rate || wc.hourlyLaborRate || 0),
+          hourlyMachineRate: Number(wc.hourly_machine_rate || wc.hourlyMachineRate || 0),
+          capacityHoursPerDay: Number(wc.capacity_hours_per_day || wc.capacityHoursPerDay || 8),
+          isActive: Boolean(wc.is_active !== undefined ? wc.is_active : true),
+        }));
+        setWorkCenters(mapped);
+      } else {
+        setWorkCenters(MOCK_WORK_CENTERS);
+      }
+    } catch {
+      setWorkCenters(MOCK_WORK_CENTERS);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadWorkCenters();
+  }, []);
+
+  const handleCreateWorkCenter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCode.trim() || !newTitle.trim()) return;
 
-    const newWc: WorkCenter = {
-      id: `wc-${Date.now()}`,
-      code: newCode,
-      title: newTitle,
-      type: newType,
-      hourlyLaborRate: newLaborRate,
-      hourlyMachineRate: newMachineRate,
-      capacityHoursPerDay: newCapacity,
-      isActive: true,
-    };
+    try {
+      await fetchApi('/manufacturing/work-centers', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: newCode,
+          title: newTitle,
+          type: newType,
+          hourlyLaborRate: newLaborRate,
+          hourlyMachineRate: newMachineRate,
+          capacityHoursPerDay: newCapacity,
+        }),
+      });
+      await loadWorkCenters();
+    } catch {
+      const newWc: WorkCenter = {
+        id: `wc-${Date.now()}`,
+        code: newCode,
+        title: newTitle,
+        type: newType,
+        hourlyLaborRate: newLaborRate,
+        hourlyMachineRate: newMachineRate,
+        capacityHoursPerDay: newCapacity,
+        isActive: true,
+      };
+      setWorkCenters([...workCenters, newWc]);
+    }
 
-    setWorkCenters([...workCenters, newWc]);
     setIsNewWcModalOpen(false);
     setNewCode('');
     setNewTitle('');

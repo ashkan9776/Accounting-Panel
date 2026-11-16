@@ -3,12 +3,14 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { JournalEntriesService } from './journal-entries.service';
 import { JournalEntryStatus, JournalEntryType, JournalLineInput } from '@accounting/core';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('api/v1/accounting/journal-entries')
 export class JournalEntriesController {
   constructor(private readonly journalService: JournalEntriesService) {}
 
+  @RequirePermissions('ACCOUNTING_WRITE')
   @Post()
   async createEntry(
     @Req() req: Request,
@@ -63,6 +65,7 @@ export class JournalEntriesController {
     return { success: true, data: entry };
   }
 
+  @RequirePermissions('ACCOUNTING_WRITE')
   @Post(':id/approve')
   async approveEntry(@Req() req: Request, @Param('id') id: string) {
     const ctx = req.tenantContext!;
@@ -71,6 +74,7 @@ export class JournalEntriesController {
     return { success: true, data: result };
   }
 
+  @RequirePermissions('ACCOUNTING_WRITE')
   @Post(':id/finalize')
   async finalizeEntry(@Req() req: Request, @Param('id') id: string) {
     const ctx = req.tenantContext!;
@@ -79,6 +83,7 @@ export class JournalEntriesController {
     return { success: true, data: result };
   }
 
+  @RequirePermissions('ACCOUNTING_WRITE')
   @Post(':id/reverse')
   async reverseEntry(
     @Req() req: Request,

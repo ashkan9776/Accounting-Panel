@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import {
   HardwareDriverEngine,
@@ -120,7 +121,7 @@ export class HardwareService {
     let count = 0;
 
     for (const l of logs) {
-      const id = `att-log-${Date.now()}-${count++}`;
+      const id = randomUUID();
       await this.db.run(
         `INSERT INTO attendance_logs (
           id, tenant_id, company_id, employee_id, terminal_id, log_date_shamsi,
