@@ -84,8 +84,12 @@ const MENU_ITEMS = [
   },
   {
     title: 'صندوق فروشگاهی (POS)',
-    href: '/pos',
     icon: CreditCard,
+    items: [
+      { title: 'پایانه فروش سریع', href: '/pos' },
+      { title: 'مدیریت شیفت‌ها و تحویل صندوق', href: '/pos/shifts' },
+      { title: 'چاپ فیش حرارتی', href: '/pos/receipt' },
+    ],
   },
   {
     title: 'رستوران و صنایع غذایی',

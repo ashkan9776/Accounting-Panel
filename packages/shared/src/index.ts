@@ -5,3 +5,4 @@ export * from './journal';
 export * from './treasury';
 export * from './inventory';
 export * from './moadian';
+export * from './pos';

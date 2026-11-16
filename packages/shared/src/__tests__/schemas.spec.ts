@@ -15,6 +15,10 @@ import {
   MoadianTaxIdSchema,
   MoadianConfigSchema,
   MoadianInvoicePayloadSchema,
+  PosOrderCreateSchema,
+  PosShiftOpenSchema,
+  PosShiftCloseSchema,
+  PosCashMovementSchema,
 } from '../index';
 
 describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
@@ -334,6 +338,96 @@ describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
       };
       const result = MoadianInvoicePayloadSchema.safeParse(payload);
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Point of Sale (POS) & Cashier Schemas', () => {
+    it('should validate opening a cashier shift with initial float', () => {
+      const open = {
+        cashDeskId: 'cash-desk-1',
+        openingCash: 5000000, // ۵ میلیون ریال پول خرد اولیه
+        notes: 'شروع شیفت صبح صندوق ۱',
+      };
+      const result = PosShiftOpenSchema.safeParse(open);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate closing a cashier shift with physical cash count', () => {
+      const close = {
+        closingCashActual: 18500000,
+        notes: 'تحویل شیفت به صندوقدار بعد',
+      };
+      const result = PosShiftCloseSchema.safeParse(close);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate cash movement during shift (cash-in / cash-out)', () => {
+      const moveIn = {
+        type: 'CASH_IN',
+        amount: 2000000,
+        reason: 'تزریق پول خرد به صندوق',
+      };
+      expect(PosCashMovementSchema.safeParse(moveIn).success).toBe(true);
+
+      const moveOut = {
+        type: 'CASH_OUT',
+        amount: 500000,
+        reason: 'پرداخت پیک موتوری ناهار پرسنل',
+      };
+      expect(PosCashMovementSchema.safeParse(moveOut).success).toBe(true);
+    });
+
+    it('should validate POS order creation with items and card/cash payment', () => {
+      const order = {
+        shiftId: 'shift-1001',
+        customerName: 'مشتری حضوری',
+        paymentMethod: 'SPLIT',
+        paidCash: 1000000,
+        paidCard: 2200000,
+        items: [
+          {
+            productId: 'prod-milk-1',
+            productName: 'شیر کم چرب ۱ لیتری',
+            barcode: '6260123456789',
+            quantity: 2,
+            unitPrice: 1000000,
+            discount: 0,
+            taxExempt: false,
+            vatRate: 10,
+            vatAmount: 200000,
+            totalPrice: 2200000,
+          },
+          {
+            productId: 'prod-bread-1',
+            productName: 'نان تست سبوس‌دار',
+            barcode: '6260987654321',
+            quantity: 1,
+            unitPrice: 1000000,
+            discount: 0,
+            taxExempt: true,
+            vatRate: 0,
+            vatAmount: 0,
+            totalPrice: 1000000,
+          },
+        ],
+        totalGross: 3000000,
+        totalDiscount: 0,
+        totalVat: 200000,
+        totalPayable: 3200000,
+      };
+      const result = PosOrderCreateSchema.safeParse(order);
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject POS order with empty basket', () => {
+      const emptyOrder = {
+        shiftId: 'shift-1001',
+        paymentMethod: 'CASH',
+        items: [],
+        totalGross: 0,
+        totalPayable: 0,
+      };
+      expect(PosOrderCreateSchema.safeParse(emptyOrder).success).toBe(false);
     });
   });
 });
