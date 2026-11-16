@@ -99,6 +99,7 @@ export default function OnboardingPage() {
         // ذخیره اطلاعات سازمانی جدید
         localStorage.setItem('tenant_id', res.data.organizationId);
         localStorage.setItem('company_name', orgName);
+        localStorage.setItem('active_preset', industry);
         setStep(3);
       } else {
         setError(res.message || 'خطا در ایجاد سازمان.');

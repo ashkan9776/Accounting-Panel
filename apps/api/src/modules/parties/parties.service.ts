@@ -42,11 +42,11 @@ export class PartiesService {
     if (data.nationalId) {
       const cleanId = data.nationalId.trim();
       if (data.partyType === PartyType.INDIVIDUAL_IRANIAN) {
-        if (!isValidNationalCode(cleanId)) {
+        if (!/^\d{10}$/.test(cleanId) || /^(\d)\1{9}$/.test(cleanId)) {
           throw new BadRequestException('کد ملی شخص حقیقی ۱۰ رقمی نامعتبر است.');
         }
       } else if (data.partyType === PartyType.LEGAL_ENTITY) {
-        if (!isValidCompanyNationalId(cleanId)) {
+        if (!/^\d{10,11}$/.test(cleanId) || /^(\d)\1+$/.test(cleanId)) {
           throw new BadRequestException('شناسه ملی شخص حقوقی ۱۱ رقمی نامعتبر است.');
         }
       }
