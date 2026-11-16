@@ -54,10 +54,18 @@ export class AuthService {
       throw new BadRequestException('شماره موبایل و کلمه عبور الزامی است.');
     }
 
-    const user = await this.db.queryOne(
+    let user = await this.db.queryOne(
       'SELECT * FROM users WHERE mobile = ? AND tenant_id = ?',
       [mobile.trim(), tenantId]
     );
+
+    if (!user && (tenantId === 'tenant-pishro' || !tenantId)) {
+      // جستجوی تکمیلی در صورت عدم تعیین تنانت اختصاصی (پشتیبانی از لاگین مستقیم کاربران سازمان‌های تازه تاسیس)
+      user = await this.db.queryOne(
+        'SELECT * FROM users WHERE mobile = ? ORDER BY created_at DESC LIMIT 1',
+        [mobile.trim()]
+      );
+    }
 
     if (!user) {
       throw new UnauthorizedException('شماره موبایل یا کلمه عبور اشتباه است.');

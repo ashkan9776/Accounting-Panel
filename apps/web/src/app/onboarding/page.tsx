@@ -96,8 +96,16 @@ export default function OnboardingPage() {
 
       if (res.data) {
         setResult(res.data);
-        // ذخیره اطلاعات سازمانی جدید
+        if (res.data.accessToken) {
+          localStorage.setItem('access_token', res.data.accessToken);
+        }
+        if (res.data.user) {
+          localStorage.setItem('user', JSON.stringify(res.data.user));
+        }
         localStorage.setItem('tenant_id', res.data.organizationId);
+        if (res.data.companyId) {
+          localStorage.setItem('company_id', res.data.companyId);
+        }
         localStorage.setItem('company_name', orgName);
         localStorage.setItem('active_preset', industry);
         setStep(3);
@@ -341,6 +349,22 @@ export default function OnboardingPage() {
               <div className="flex justify-between py-1">
                 <span className="text-slate-400">انبار پیش‌فرض ایجادشده:</span>
                 <span className="font-mono text-slate-300">{result.defaultWarehouseId}</span>
+              </div>
+            </div>
+
+            {/* کارت مشخصات ورود */}
+            <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-4 text-xs space-y-2 text-right">
+              <div className="text-emerald-300 font-bold mb-1 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>اطلاعات ورود مدیر ارشد به سامانه:</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-emerald-800/40">
+                <span className="text-slate-300">شماره موبایل:</span>
+                <span className="font-mono text-emerald-400 font-bold">{adminMobile}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-300">کلمه عبور اختصاص‌یافته:</span>
+                <span className="font-mono text-amber-300 font-bold">Admin@2026!Sec</span>
               </div>
             </div>
 

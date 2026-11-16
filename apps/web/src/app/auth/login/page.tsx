@@ -136,16 +136,19 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* ورود سریع مدیر ارشد تست */}
-          <div className="mt-6 pt-5 border-t border-slate-700/60">
+          {/* راهنمای اطلاعات ورود */}
+          <div className="mt-6 pt-5 border-t border-slate-700/60 space-y-2">
             <button
               type="button"
               onClick={fillQuickAdmin}
               className="w-full py-2 px-3 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium flex items-center justify-center gap-2 border border-slate-600/50 transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>تکمیل سریع مشخصات مدیر ارشد (تست)</span>
+              <span>ورود سریع با کاربر پیش‌فرض دمو (۰۹۱۲۰۰۰۰۰۰۰ / admin12345)</span>
             </button>
+            <div className="text-[11px] text-slate-400 text-center leading-relaxed">
+              برای سازمان‌های ثبت‌شده در Onboarding: از شماره موبایل ثبت‌شده و کلمه عبور <span className="font-mono text-amber-300">Admin@2026!Sec</span> استفاده نمایید.
+            </div>
           </div>
         </div>
 

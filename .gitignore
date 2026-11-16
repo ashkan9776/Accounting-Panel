@@ -1,10 +1,10 @@
 node_modules/
 dist/
 .next/
-storage/*.db
-storage/*.db-journal
-apps/api/storage/*.db
-apps/api/storage/*.db-journal
+storage/
+apps/api/storage/
+*.db
+*.db-journal
 *.db
 *.db-journal
 *.log

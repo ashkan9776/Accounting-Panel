@@ -128,7 +128,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       // استفاده از موتور داخلی PostgreSQL (PGlite) در محیط تست یا عدم تعریف DATABASE_URL
       const { PGlite } = await import('@electric-sql/pglite');
       if (!sharedPgliteInstance) {
-        sharedPgliteInstance = new PGlite();
+        if (process.env.NODE_ENV === 'test') {
+          sharedPgliteInstance = new PGlite();
+        } else {
+          const dataDir = process.env.PG_DATA_DIR || path.resolve(process.cwd(), 'storage/pgdata');
+          if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+          }
+          sharedPgliteInstance = new PGlite(dataDir);
+        }
       }
       const pglite = sharedPgliteInstance;
       this.isEmbedded = true;
@@ -181,6 +189,22 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (fs.existsSync(schemaFile)) {
       const sql = fs.readFileSync(schemaFile, 'utf8');
       await this.exec(sql);
+    }
+
+    // بررسی اولیه و اعمال بذر اطلاعات پیش‌فرض سازمان و پلن‌ها در صورت خالی بودن دیتابیس
+    if (process.env.NODE_ENV !== 'test') {
+      try {
+        const userCheck = await this.queryOne<{ count: string }>('SELECT count(*) as count FROM users');
+        const count = userCheck?.count ? parseInt(userCheck.count, 10) : 0;
+        if (count === 0) {
+          console.log('[DatabaseService] دیتابیس تازه راه‌اندازی شده است؛ در حال درج اطلاعات پیش‌فرض (Auto-seed)...');
+          const { runSeed } = await import('./seed');
+          await runSeed(this);
+          console.log('[DatabaseService] اطلاعات پیش‌فرض با موفقیت درج شد.');
+        }
+      } catch (e: any) {
+        console.warn('[DatabaseService] Auto-seed check notice:', e.message);
+      }
     }
   }
 

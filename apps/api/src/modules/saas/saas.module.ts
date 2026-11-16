@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccountingModule } from '../accounting/accounting.module';
+import { IdentityModule } from '../identity/identity.module';
 import { SaaSPlansService } from './saas-plans.service';
 import { SaaSPlansController } from './saas-plans.controller';
 import { OnboardingService } from './onboarding.service';
@@ -12,7 +13,7 @@ import { TenantIsolationGuard } from './tenant-isolation.guard';
 import { PlanQuotaGuard } from './plan-quota.guard';
 
 @Module({
-  imports: [AccountingModule],
+  imports: [AccountingModule, IdentityModule],
   controllers: [
     SaaSPlansController,
     OnboardingController,

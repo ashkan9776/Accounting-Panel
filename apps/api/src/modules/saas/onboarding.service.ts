@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Optional } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '../../database/database.service';
@@ -12,7 +13,10 @@ import {
 
 @Injectable()
 export class OnboardingService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    @Optional() private readonly jwtService?: JwtService
+  ) {}
 
   /**
    * راه‌اندازی سریع و تمام‌خودکار سازمان جدید متناسب با صنف کاری
@@ -186,7 +190,21 @@ export class OnboardingService {
         }
       }
 
-      // ۷. ایجاد اشتراک آزمایشی ۱۴ روزه و سهمیه منابع
+      // ۷. اطمینان از وجود پلن آزمایشی رایگان در صورت نبود
+      await tx.run(
+        `INSERT INTO saas_plans (
+          id, code, name_fa, tier, monthly_price, yearly_price, max_users, max_branches,
+          max_monthly_transactions, allowed_modules_json, has_api_access,
+          has_audit_chain_verification, storage_quota_mb, is_active, created_at
+        ) VALUES (
+          'plan-free-trial', 'TRIAL', 'نسخه آزمایشی رایگان (۱۴ روزه)', 'FREE',
+          '0', '0', 1, 1, 200, '["GENERAL_LEDGER","TREASURY","INVENTORY","SALES"]',
+          false, true, 100, true, ?
+        ) ON CONFLICT (id) DO NOTHING`,
+        [now]
+      );
+
+      // ۷.۱. ایجاد اشتراک آزمایشی ۱۴ روزه و سهمیه منابع
       await tx.run(
         `INSERT INTO tenant_subscriptions (
           id, organization_id, plan_id, status, started_at, expires_at, auto_renew,
@@ -214,14 +232,35 @@ export class OnboardingService {
       );
     });
 
+    // صدور توکن ورود خودکار برای مدیر ارشد سازمان تازه تاسیس
+    let accessToken: string | null = null;
+    if (this.jwtService) {
+      accessToken = this.jwtService.sign({
+        sub: adminUserId,
+        tenantId,
+        mobile: input.adminMobile,
+        isSuperAdmin: true,
+      });
+    }
+
     return {
       organizationId: tenantId,
+      companyId,
       fiscalYearId,
       defaultWarehouseId: warehouseId,
       assignedPlanId: trialSub.planId,
       initialAccountsCount: accountsInserted,
       rolesCreated: ['ADMIN', 'ACCOUNTANT', 'AUDITOR', 'CASHIER'],
       subscription: trialSub,
-    };
+      accessToken,
+      user: {
+        id: adminUserId,
+        tenantId,
+        mobile: input.adminMobile,
+        fullName: input.adminFullName,
+        isSuperAdmin: true,
+        roles: ['ADMIN'],
+      },
+    } as any;
   }
 }
