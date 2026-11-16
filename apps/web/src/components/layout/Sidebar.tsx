@@ -21,6 +21,8 @@ import {
   ShoppingCart,
   ShieldCheck,
   Factory,
+  Briefcase,
+  Landmark,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -108,6 +110,23 @@ const MENU_ITEMS = [
       { title: 'فرمول‌های ساخت (BOM)', href: '/manufacturing/boms' },
       { title: 'سفارشات تولید (Work Orders)', href: '/manufacturing/orders' },
       { title: 'مراکز کاری و خطوط', href: '/manufacturing/work-centers' },
+    ],
+  },
+  {
+    title: 'حقوق و دستمزد',
+    icon: Briefcase,
+    items: [
+      { title: 'کارتابل دوره‌های حقوق', href: '/payroll/periods' },
+      { title: 'احکام کارگزینی و پرسنل', href: '/payroll/employees' },
+      { title: 'فیش حقوقی رسمی', href: '/payroll/slips' },
+    ],
+  },
+  {
+    title: 'اموال و دارایی‌های ثابت',
+    icon: Landmark,
+    items: [
+      { title: 'فهرست اموال و پلاک‌کوبی', href: '/assets' },
+      { title: 'استهلاک دوره (ماده ۱۴۹)', href: '/assets/depreciation' },
     ],
   },
   {

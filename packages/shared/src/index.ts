@@ -8,3 +8,5 @@ export * from './moadian';
 export * from './pos';
 export * from './restaurant';
 export * from './manufacturing';
+export * from './payroll';
+export * from './fixed-assets';

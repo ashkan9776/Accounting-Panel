@@ -28,6 +28,13 @@ import {
   ProductionOrderCreateSchema,
   MaterialIssueSchema,
   ProductionOrderCompleteSchema,
+  EmployeeCreateSchema,
+  PayrollPeriodCreateSchema,
+  TimecardItemSchema,
+  PayrollPayViaBankSchema,
+  FixedAssetCreateSchema,
+  DepreciationCalculateSchema,
+  AssetDisposalSchema,
 } from '../index';
 
 describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
@@ -617,6 +624,124 @@ describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
       };
       const result = ProductionOrderCompleteSchema.safeParse(complete);
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Payroll & Personnel Schemas (Labor Law & Tamin)', () => {
+    it('should validate personnel creation with standard contract terms and Sheba', () => {
+      const emp = {
+        personnelCode: 'EMP-1001',
+        nationalId: '0012345678',
+        firstName: 'مهدی',
+        lastName: 'محمدی',
+        fatherName: 'حسین',
+        birthDateShamsi: '1368/04/15',
+        hireDateShamsi: '1403/01/01',
+        insuranceNumber: '12345678',
+        bankName: 'بانک پاسارگاد',
+        bankAccountNumber: '2018000123456',
+        bankShebaNumber: 'IR120570000000001234567890',
+        jobTitle: 'کارشناس ارشد حسابداری',
+        department: 'مالی و اداری',
+        contract: {
+          contractType: 'TEMPORARY',
+          startDateShamsi: '1403/01/01',
+          endDateShamsi: '1403/12/29',
+          monthlyBaseSalary: 120000000,
+          monthlyHousingAllowance: 9000000,
+          monthlyGroceryAllowance: 14000000,
+          monthlySeniorityBonus: 2100000,
+          childCount: 1,
+          monthlyChildAllowancePerChild: 7166184,
+        },
+      };
+      const result = EmployeeCreateSchema.safeParse(emp);
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject employee creation with invalid Sheba number format', () => {
+      const invalidEmp = {
+        personnelCode: 'EMP-1002',
+        nationalId: '0012345678',
+        firstName: 'رضا',
+        lastName: 'اکبری',
+        hireDateShamsi: '1403/01/01',
+        bankShebaNumber: '1234567890', // Missing 'IR' and wrong length
+        jobTitle: 'انباردار',
+        contract: {
+          startDateShamsi: '1403/01/01',
+          monthlyBaseSalary: 95000000,
+        },
+      };
+      const result = EmployeeCreateSchema.safeParse(invalidEmp);
+      expect(result.success).toBe(false);
+    });
+
+    it('should validate payroll period creation and timecard recording', () => {
+      const period = {
+        title: 'حقوق و دستمزد آبان‌ماه ۱۴۰۳',
+        yearShamsi: '1403',
+        monthNumber: 8,
+        startDateShamsi: '1403/08/01',
+        endDateShamsi: '1403/08/30',
+      };
+      const pResult = PayrollPeriodCreateSchema.safeParse(period);
+      expect(pResult.success).toBe(true);
+
+      const timecard = {
+        employeeId: 'emp-1001',
+        workedDays: 30,
+        overtimeHours: 25,
+        advanceDeduction: 10000000,
+        loanDeduction: 5000000,
+      };
+      const tResult = TimecardItemSchema.safeParse(timecard);
+      expect(tResult.success).toBe(true);
+    });
+
+    it('should validate payroll payment via bank IBAN batch', () => {
+      const payment = {
+        bankAccountId: 'bank-acc-pasargad-1',
+        paymentDateShamsi: '1403/08/30',
+        referenceNumber: 'PAYA-14030830-9988',
+      };
+      const result = PayrollPayViaBankSchema.safeParse(payment);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Fixed Assets Schemas (Article 149 Direct Tax Law)', () => {
+    it('should validate asset creation with straight-line depreciation method', () => {
+      const asset = {
+        assetCode: 'FA-1403-M01',
+        title: 'دستگاه تراش CNC صنعتی ۴ محور',
+        category: 'MACHINERY_TECHNICAL',
+        purchaseDateShamsi: '1403/02/15',
+        historicalCost: 1500000000,
+        salvageValue: 150000000,
+        depreciationMethod: 'STRAIGHT_LINE',
+        usefulLifeYears: 10,
+        location: 'سالن شماره ۲ ماشین‌کاری',
+      };
+      const result = FixedAssetCreateSchema.safeParse(asset);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate monthly depreciation calculation and asset disposal', () => {
+      const calc = {
+        periodDateShamsi: '1403/08/30',
+        monthsCount: 1,
+      };
+      const cResult = DepreciationCalculateSchema.safeParse(calc);
+      expect(cResult.success).toBe(true);
+
+      const disposal = {
+        disposalDateShamsi: '1403/08/30',
+        salePrice: 1100000000,
+        receivingBankAccountId: 'bank-acc-mellat-1',
+      };
+      const dResult = AssetDisposalSchema.safeParse(disposal);
+      expect(dResult.success).toBe(true);
     });
   });
 });
