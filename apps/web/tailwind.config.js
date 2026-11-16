@@ -25,7 +25,9 @@ module.exports = {
         }
       },
       fontFamily: {
-        vazir: ['Vazirmatn', 'Tahoma', 'sans-serif'],
+        sans: ['"Vazirmatn FD"', 'Vazirmatn', 'Tahoma', 'sans-serif'],
+        vazir: ['"Vazirmatn FD"', 'Vazirmatn', 'Tahoma', 'sans-serif'],
+        mono: ['"Vazirmatn FD"', 'Vazirmatn', 'Tahoma', 'sans-serif'],
       }
     },
   },

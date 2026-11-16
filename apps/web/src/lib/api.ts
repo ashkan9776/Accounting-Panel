@@ -67,10 +67,21 @@ export async function fetchApi<T = any>(
   return json;
 }
 
-// قالب‌بندی ارقام پولی با جداکننده سه‌رقمی فارسی
+const farsiDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+
+export function toPersianDigits(input: string | number | bigint | null | undefined): string {
+  if (input === null || input === undefined || input === '') return '';
+  return input
+    .toString()
+    .replace(/[0-9]/g, (char) => farsiDigits[parseInt(char, 10)])
+    .replace(/[٠-٩]/g, (char) => farsiDigits[char.charCodeAt(0) - 1632]);
+}
+
+// قالب‌بندی ارقام پولی با جداکننده سه‌رقمی فارسی و ارقام قطعی فارسی
 export function formatMoney(amount: number | string | undefined | null): string {
   if (amount === undefined || amount === null || amount === '') return '۰';
   const num = typeof amount === 'string' ? parseFloat(amount) : amount;
   if (isNaN(num)) return '۰';
-  return num.toLocaleString('fa-IR');
+  const formatted = num.toLocaleString('fa-IR');
+  return toPersianDigits(formatted);
 }

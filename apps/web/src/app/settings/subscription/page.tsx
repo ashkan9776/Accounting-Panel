@@ -20,31 +20,12 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { fetchApi } from '../../../lib/api';
-
-function formatToShamsi(dateStr?: string | null): string {
-  if (!dateStr) return '—';
-  if (/^1[34]\d\d\/\d{1,2}\/\d{1,2}/.test(dateStr)) {
-    return dateStr;
-  }
-  try {
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(d);
-    }
-  } catch {}
-  return dateStr;
-}
-
-function formatFaNumber(val?: number | string | null): string {
-  if (val === undefined || val === null || val === '') return '۰';
-  const num = typeof val === 'number' ? val : Number(val);
-  if (isNaN(num)) return String(val);
-  return num.toLocaleString('fa-IR');
-}
+import {
+  toPersianDigits,
+  formatCurrencyFa,
+  formatNumberFa,
+  formatShamsiDateFa,
+} from '../../../lib/formatters';
 
 const DEFAULT_PLANS = [
   {
@@ -318,11 +299,11 @@ export default function SaaSPlansAndSubscriptionPage() {
             <div className="border-t border-slate-800/80 pt-4 space-y-2 text-xs text-slate-300">
               <div className="flex justify-between">
                 <span>اعتبار تا تاریخ:</span>
-                <span className="font-mono text-white font-bold">{formatToShamsi(subscription.expiresAt)}</span>
+                <span className="font-mono text-white font-bold">{formatShamsiDateFa(subscription.expiresAt)}</span>
               </div>
               <div className="flex justify-between">
                 <span>روزهای باقیمانده:</span>
-                <span className="font-mono text-emerald-400 font-bold">{formatFaNumber(subscription.daysRemaining)} روز</span>
+                <span className="font-mono text-emerald-400 font-bold">{formatNumberFa(subscription.daysRemaining)} روز</span>
               </div>
               <div className="flex justify-between">
                 <span>تمدید خودکار:</span>
@@ -366,8 +347,8 @@ export default function SaaSPlansAndSubscriptionPage() {
                 ></div>
               </div>
               <div className="text-[11px] text-slate-500 flex justify-between font-mono">
-                <span>{formatFaNumber(usage.currentTransactions)} تراکنش</span>
-                <span>سقف: {formatFaNumber(usage.maxTransactions)}</span>
+                <span>{formatNumberFa(usage.currentTransactions)} تراکنش</span>
+                <span>سقف: {formatNumberFa(usage.maxTransactions)}</span>
               </div>
             </div>
 
@@ -375,7 +356,7 @@ export default function SaaSPlansAndSubscriptionPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                 <span>کاربران همزمان:</span>
-                <span className="font-mono">{formatFaNumber(userPercent)}٪</span>
+                <span className="font-mono">{formatNumberFa(userPercent)}٪</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                 <div
@@ -384,8 +365,8 @@ export default function SaaSPlansAndSubscriptionPage() {
                 ></div>
               </div>
               <div className="text-[11px] text-slate-500 flex justify-between font-mono">
-                <span>{formatFaNumber(usage.currentUsers)} کاربر</span>
-                <span>سقف: {formatFaNumber(usage.maxUsers)} کاربر</span>
+                <span>{formatNumberFa(usage.currentUsers)} کاربر</span>
+                <span>سقف: {formatNumberFa(usage.maxUsers)} کاربر</span>
               </div>
             </div>
 
@@ -393,7 +374,7 @@ export default function SaaSPlansAndSubscriptionPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                 <span>فضای ذخیره‌سازی ابری:</span>
-                <span className="font-mono">{formatFaNumber(storagePercent)}٪</span>
+                <span className="font-mono">{formatNumberFa(storagePercent)}٪</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                 <div
@@ -402,8 +383,8 @@ export default function SaaSPlansAndSubscriptionPage() {
                 ></div>
               </div>
               <div className="text-[11px] text-slate-500 flex justify-between font-mono">
-                <span>{formatFaNumber(usage.storageMb)} مگابایت</span>
-                <span>سقف: {formatFaNumber(usage.maxStorageMb)} مگابایت</span>
+                <span>{formatNumberFa(usage.storageMb)} مگابایت</span>
+                <span>سقف: {formatNumberFa(usage.maxStorageMb)} مگابایت</span>
               </div>
             </div>
           </div>
@@ -453,13 +434,13 @@ export default function SaaSPlansAndSubscriptionPage() {
                   <div>
                     <div className="flex items-baseline gap-1 font-mono">
                       <span className="text-2xl font-black text-slate-950">
-                        {formatFaNumber(Math.round(price))}
+                        {formatCurrencyFa(Math.round(price))}
                       </span>
                       <span className="text-xs font-medium text-slate-500">ریال / ماه</span>
                     </div>
                     {billingCycle === 'YEARLY' && (
                       <div className="text-[10px] text-emerald-600 font-semibold mt-1">
-                        صورتحساب سالانه: {formatFaNumber(p.yearlyPrice)} ریال
+                        صورتحساب سالانه: {formatCurrencyFa(p.yearlyPrice)} ریال
                       </div>
                     )}
                   </div>
@@ -467,15 +448,15 @@ export default function SaaSPlansAndSubscriptionPage() {
                   <div className="border-t pt-4 space-y-2.5 text-xs text-slate-700">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>تا {formatFaNumber(p.maxUsers)} کاربر همزمان</span>
+                      <span>تا {formatNumberFa(p.maxUsers)} کاربر همزمان</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>{formatFaNumber(p.maxMonthlyTransactions)} سند و تراکنش ماهانه</span>
+                      <span>{formatNumberFa(p.maxMonthlyTransactions)} سند و تراکنش ماهانه</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>{formatFaNumber(p.storageQuotaMb)} مگابایت فضای ابری</span>
+                      <span>{formatNumberFa(p.storageQuotaMb)} مگابایت فضای ابری</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -537,18 +518,18 @@ export default function SaaSPlansAndSubscriptionPage() {
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>روزهای باقیمانده از طرح فعلی:</span>
-                  <strong className="font-mono text-purple-700">{formatFaNumber(upgradeCalculation.daysRemaining)} روز</strong>
+                  <strong className="font-mono text-purple-700">{formatNumberFa(upgradeCalculation.daysRemaining)} روز</strong>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>اعتبار بلااستفاده طرح قبلی (تخفیف کسر شده):</span>
                   <span className="font-mono text-emerald-700 font-bold">
-                    -{formatFaNumber(upgradeCalculation.unusedCreditFromOldPlan)} ریال
+                    -{formatCurrencyFa(upgradeCalculation.unusedCreditFromOldPlan)} ریال
                   </span>
                 </div>
                 <div className="border-t pt-2 flex justify-between font-black text-sm text-slate-900">
                   <span>مبلغ نهایی قابل پرداخت:</span>
                   <span className="font-mono text-purple-700">
-                    {formatFaNumber(upgradeCalculation.netPayableAmount)} ریال
+                    {formatCurrencyFa(upgradeCalculation.netPayableAmount)} ریال
                   </span>
                 </div>
               </div>

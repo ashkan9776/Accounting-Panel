@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { fetchApi } from '../../lib/api';
+import { toPersianDigits, toEnglishDigits } from '../../lib/formatters';
 
 const INDUSTRIES = [
   {
@@ -78,15 +79,15 @@ export default function OnboardingPage() {
       const payload = {
         organizationName: orgName.trim(),
         storeName: storeName.trim(),
-        nationalId: nationalId.trim(),
-        economicCode: economicCode.trim(),
+        nationalId: toEnglishDigits(nationalId.trim()),
+        economicCode: toEnglishDigits(economicCode.trim()),
         industry,
         defaultCurrency: currency,
         initialFiscalYearTitle: 'سال مالی ۱۴۰۳',
         fiscalYearStartDate: '1403/01/01',
         fiscalYearEndDate: '1403/12/29',
         adminFullName: adminFullName.trim(),
-        adminMobile: adminMobile.trim(),
+        adminMobile: toEnglishDigits(adminMobile.trim()),
       };
 
       const res = await fetchApi('/saas/onboarding', {
@@ -134,7 +135,7 @@ export default function OnboardingPage() {
             </p>
           </div>
           <div className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
-            مرحله {step} از ۳
+            مرحله {toPersianDigits(step)} از ۳
           </div>
         </div>
 

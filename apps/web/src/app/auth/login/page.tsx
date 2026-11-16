@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Scale, Lock, Smartphone, ArrowLeft, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { fetchApi } from '../../../lib/api';
+import { toEnglishDigits } from '../../../lib/formatters';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,7 +28,7 @@ export default function LoginPage() {
       const res = await fetchApi('/auth/login', {
         method: 'POST',
         body: JSON.stringify({
-          mobile: mobile.trim(),
+          mobile: toEnglishDigits(mobile.trim()),
           password: password.trim(),
           tenantId: 'tenant-pishro',
         }),
@@ -94,7 +95,7 @@ export default function LoginPage() {
                 <input
                   type="text"
                   dir="ltr"
-                  placeholder="09120000000"
+                  placeholder="۰۹۱۲۰۰۰۰۰۰۰"
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
                   className="w-full bg-slate-900/90 border border-slate-700 text-slate-100 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-left font-mono"
