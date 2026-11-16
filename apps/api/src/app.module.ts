@@ -21,6 +21,7 @@ import { TaxReportsModule } from './modules/tax-reports/tax-reports.module';
 import { FinancialReportsModule } from './modules/financial-reports/financial-reports.module';
 import { OmnichannelModule } from './modules/omnichannel/omnichannel.module';
 import { SaaSModule } from './modules/saas/saas.module';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { SaaSModule } from './modules/saas/saas.module';
     RulesModule,
     AuditModule
   ],
+  controllers: [AppController],
   providers: [DatabaseService],
   exports: [DatabaseService]
 })
