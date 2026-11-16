@@ -7,3 +7,4 @@ export * from './inventory';
 export * from './moadian';
 export * from './pos';
 export * from './restaurant';
+export * from './manufacturing';

@@ -23,6 +23,11 @@ import {
   RestaurantTableTransferSchema,
   RestaurantRecipeCreateSchema,
   RestaurantOrderCreateSchema,
+  WorkCenterCreateSchema,
+  BomCreateSchema,
+  ProductionOrderCreateSchema,
+  MaterialIssueSchema,
+  ProductionOrderCompleteSchema,
 } from '../index';
 
 describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
@@ -525,6 +530,93 @@ describe('Shared Zod Schemas Validation (Iranian Accounting)', () => {
         totalPayable: 0,
       };
       expect(RestaurantOrderCreateSchema.safeParse(invalidOrder).success).toBe(false);
+    });
+  });
+
+  describe('Manufacturing & Cost Accounting Schemas', () => {
+    it('should validate creating a production work center with labor and machine rates', () => {
+      const wc = {
+        code: 'WC-CNC-01',
+        title: 'مرکز فرز و تراشکاری CNC',
+        type: 'MACHINE',
+        hourlyLaborRate: 1500000,
+        hourlyMachineRate: 2500000,
+        capacityHoursPerDay: 16,
+      };
+      const result = WorkCenterCreateSchema.safeParse(wc);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate multi-level Bill of Materials (BOM) creation', () => {
+      const bom = {
+        productId: 'prod-electric-motor',
+        productName: 'الکتروموتور صنعتی ۳ فاز ۵ اسب',
+        version: 'v2.1',
+        title: 'فرمولاسیون اصلی سیم‌پیچی مس و پوسته چدن',
+        yieldQuantity: 1,
+        items: [
+          {
+            productId: 'raw-copper-wire',
+            productName: 'سیم لاکی مسی نمره ۰.۸',
+            itemType: 'RAW_MATERIAL',
+            quantityPerUnit: 4.5,
+            unit: 'کیلوگرم',
+            unitCost: 5500000,
+            scrapPercentage: 2,
+          },
+          {
+            productId: 'semi-cast-rotor',
+            productName: 'روتور تراش‌خورده بالانس‌شده',
+            itemType: 'SEMI_FINISHED',
+            quantityPerUnit: 1,
+            unit: 'عدد',
+            unitCost: 12000000,
+            scrapPercentage: 0,
+          },
+        ],
+      };
+      const result = BomCreateSchema.safeParse(bom);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate production order creation with dates and planned quantity', () => {
+      const order = {
+        bomId: 'bom-motor-01',
+        productId: 'prod-electric-motor',
+        plannedQuantity: 50,
+        plannedStartDate: '1403/08/26',
+        plannedEndDate: '1403/09/10',
+        notes: 'تولید بچ سری اول سفارش پتروشیمی',
+      };
+      const result = ProductionOrderCreateSchema.safeParse(order);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate raw materials issue to work-in-progress (WIP)', () => {
+      const issue = {
+        orderId: 'wo-1403-0501',
+        warehouseId: 'wh-raw-1',
+        materials: [
+          {
+            productId: 'raw-copper-wire',
+            quantity: 225,
+            unitCost: 5500000,
+          },
+        ],
+      };
+      const result = MaterialIssueSchema.safeParse(issue);
+      expect(result.success).toBe(true);
+    });
+
+    it('should validate production completion and finished goods receipt', () => {
+      const complete = {
+        orderId: 'wo-1403-0501',
+        completedQuantity: 50,
+        destinationWarehouseId: 'wh-finished-goods',
+        notes: 'تایید کنترل کیفیت QC و انتقال به انبار محصول',
+      };
+      const result = ProductionOrderCompleteSchema.safeParse(complete);
+      expect(result.success).toBe(true);
     });
   });
 });

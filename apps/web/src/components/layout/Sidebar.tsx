@@ -20,6 +20,7 @@ import {
   Wallet,
   ShoppingCart,
   ShieldCheck,
+  Factory,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -98,6 +99,15 @@ const MENU_ITEMS = [
       { title: 'نقشه سالن و میزها', href: '/restaurant/tables' },
       { title: 'نمایشگر آشپزخانه (KDS)', href: '/restaurant/kds' },
       { title: 'دستور پخت و Food Cost', href: '/restaurant/recipes' },
+    ],
+  },
+  {
+    title: 'تولید و بهای تمام‌شده',
+    icon: Factory,
+    items: [
+      { title: 'فرمول‌های ساخت (BOM)', href: '/manufacturing/boms' },
+      { title: 'سفارشات تولید (Work Orders)', href: '/manufacturing/orders' },
+      { title: 'مراکز کاری و خطوط', href: '/manufacturing/work-centers' },
     ],
   },
   {
