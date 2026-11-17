@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import {
   ECommerceEngine,
   OnlineOrderStatus,
@@ -19,7 +20,8 @@ Decimal.set({ precision: 28, rounding: Decimal.ROUND_HALF_UP });
 export class ECommerceService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly journalService: JournalEntriesService
+    private readonly journalService: JournalEntriesService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   // ۰. دریافت فهرست سفارشات آنلاین
@@ -253,11 +255,13 @@ export class ECommerceService {
       totalCogs: totalCogs.toFixed(0)
     };
 
+    const gatewaySub = await this.accountMapping.getAccount(tenantId, companyId, 'POS_IN_TRANSIT', 'sub-1104');
+
     // صدور سند حسابداری دوبل فروش اینترنتی
     const postingLines = ECommerceEngine.buildOnlineOrderPostingLines({
       orderNumber: order.order_number,
       pricing,
-      gatewaySubsidiaryId: 'sub-1104',
+      gatewaySubsidiaryId: gatewaySub,
       gatewayDimensionId: data.gatewayDimensionId || 'dim-bank-1',
       costCenterDimensionId: data.costCenterDimensionId || 'dim-cc-1',
       warehouseDimensionId: data.warehouseDimensionId || 'wh-central'
@@ -346,13 +350,18 @@ export class ECommerceService {
       costCenterDimensionId?: string;
     }
   ) {
+    const [bankSub, gatewaySub] = await Promise.all([
+      this.accountMapping.getAccount(tenantId, companyId, 'BANK', 'sub-1103'),
+      this.accountMapping.getAccount(tenantId, companyId, 'POS_IN_TRANSIT', 'sub-1104'),
+    ]);
+
     const lines = ECommerceEngine.buildGatewaySettlementLines({
       orderNumber: data.orderNumber,
       settledAmount: data.settledAmount,
       gatewayFee: data.gatewayFee,
-      bankSubsidiaryId: 'sub-1103',
+      bankSubsidiaryId: bankSub,
       bankDimensionId: data.bankDimensionId || 'dim-bank-1',
-      gatewaySubsidiaryId: 'sub-1104',
+      gatewaySubsidiaryId: gatewaySub,
       gatewayDimensionId: data.bankDimensionId || 'dim-bank-1',
       costCenterDimensionId: data.costCenterDimensionId || 'dim-cc-1'
     });

@@ -52,7 +52,19 @@ export class MigrationService {
           [tenantId, companyId, acc.code]
         );
         const subId = existing?.id || randomUUID();
-        const headId = `head-${acc.parentCode || acc.code.substring(0, 2)}`;
+        const parentCode = acc.parentCode || acc.code.substring(0, 2);
+        const head = await this.db.queryOne<any>(
+          'SELECT id FROM account_heads WHERE tenant_id = ? AND company_id = ? AND code = ?',
+          [tenantId, companyId, parentCode]
+        );
+        let headId = head?.id;
+        if (!headId) {
+          const fallbackHead = await this.db.queryOne<any>(
+            'SELECT id FROM account_heads WHERE tenant_id = ? AND company_id = ? ORDER BY code ASC LIMIT 1',
+            [tenantId, companyId]
+          );
+          headId = fallbackHead?.id || `head-${tenantId}-${parentCode}`;
+        }
         await this.db.run(
           `INSERT INTO account_subsidiaries (
             id, tenant_id, company_id, head_id, code, title, nature,

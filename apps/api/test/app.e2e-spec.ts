@@ -596,7 +596,7 @@ describe('Accounting Core Platform E2E Integration Tests (فاز ۱ و فاز ۲
     expect(res.body.success).toBe(true);
     expect(res.body.data.fiscal_memory_id).toBe('A123B4');
     expect(res.body.data.public_key_base64).toBeDefined();
-    expect(res.body.data.is_sandbox_mode).toBe(1);
+    expect(Boolean(res.body.data.is_sandbox_mode)).toBe(true);
   });
 
   it('Step 19 (Phase 4): Should generate new RSA 2048-bit key pair for tax portal registration', async () => {

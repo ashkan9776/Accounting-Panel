@@ -83,6 +83,7 @@ export interface TenantOnboardingInput {
   adminFullName: string;
   adminMobile: string;
   adminEmail?: string;
+  adminPassword?: string;
   storeName?: string;
 }
 

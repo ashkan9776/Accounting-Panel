@@ -55,25 +55,26 @@ export class PurchasesService {
       throw new BadRequestException('فاکتور خرید باید حداقل شامل یک قلم کالا باشد.');
     }
 
-    // ۱. استعلام تامین‌کننده و طرف حساب باربری جهت استخراج ابعاد تفصیلی شناور
-    const supplier = await this.db.queryOne(
-      'SELECT id, name, floating_dimension_id FROM parties WHERE tenant_id = ? AND company_id = ? AND id = ?',
-      [tenantId, companyId, data.supplierPartyId]
-    );
-    if (!supplier) {
-      throw new NotFoundException(`تامین‌کننده‌ای با شناسه ${data.supplierPartyId} یافت نشد.`);
-    }
-
-    let freightPayeeDimId = supplier.floating_dimension_id;
-    if (data.freightPartyId && data.freightPartyId !== data.supplierPartyId) {
-      const freightParty = await this.db.queryOne(
+    return await this.db.transaction(async (tx) => {
+      // ۱. استعلام تامین‌کننده و طرف حساب باربری جهت استخراج ابعاد تفصیلی شناور
+      const supplier = await tx.queryOne(
         'SELECT id, name, floating_dimension_id FROM parties WHERE tenant_id = ? AND company_id = ? AND id = ?',
-        [tenantId, companyId, data.freightPartyId]
+        [tenantId, companyId, data.supplierPartyId]
       );
-      if (freightParty) {
-        freightPayeeDimId = freightParty.floating_dimension_id;
+      if (!supplier) {
+        throw new NotFoundException(`تامین‌کننده‌ای با شناسه ${data.supplierPartyId} یافت نشد.`);
       }
-    }
+
+      let freightPayeeDimId = supplier.floating_dimension_id;
+      if (data.freightPartyId && data.freightPartyId !== data.supplierPartyId) {
+        const freightParty = await tx.queryOne(
+          'SELECT id, name, floating_dimension_id FROM parties WHERE tenant_id = ? AND company_id = ? AND id = ?',
+          [tenantId, companyId, data.freightPartyId]
+        );
+        if (freightParty) {
+          freightPayeeDimId = freightParty.floating_dimension_id;
+        }
+      }
 
     // ۲. محاسبه بهای اولیه اقلام و تسهیم کرایه حمل در بهای تمام‌شده (Landed Cost)
     const rawItemsForAllocation = data.items.map((item) => {
@@ -127,7 +128,8 @@ export class PurchasesService {
         tenantId,
         companyId,
         data.warehouseId,
-        item.productId
+        item.productId,
+        tx
       );
 
       const valuationMethod = (product.valuation_method as ValuationMethod) || ValuationMethod.MOVING_AVERAGE;
@@ -157,7 +159,7 @@ export class PurchasesService {
         balanceTotalCost: receiptRes.newTotalValue,
         fifoLayers: receiptRes.updatedFifoLayers,
         description: `خرید کالا از ${supplier.name} - فاکتور ${data.documentNumber}`
-      });
+      }, tx);
 
       processedItems.push({
         id: `pur-item-${purchaseId}-${i + 1}`,
@@ -210,63 +212,64 @@ export class PurchasesService {
         sourceModule: 'PURCHASE',
         sourceDocumentId: purchaseId,
         lines: journalLines
-      }
+      },
+      tx
     );
 
+    await this.journalService.approveEntry(tenantId, journalEntry.id, userId, tx);
+
     // ۵. درج سربرگ و اقلام فاکتور خرید در پایگاه‌داده در قالب تراکنش اتمیک
-    await this.db.transaction(async (tx) => {
+    await tx.run(
+      `INSERT INTO purchase_documents (
+        id, tenant_id, company_id, branch_id, warehouse_id,
+        supplier_party_id, freight_party_id, document_number, date_shamsi,
+        total_goods_amount, freight_amount, total_discount, total_vat, grand_total,
+        status, journal_entry_id, description, created_by_user_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)`,
+      [
+        purchaseId,
+        tenantId,
+        companyId,
+        branchId,
+        data.warehouseId,
+        data.supplierPartyId,
+        data.freightPartyId || null,
+        data.documentNumber,
+        data.dateShamsi,
+        totalGoodsAmount.toFixed(0),
+        freightAmt.toFixed(0),
+        totalDiscount.toFixed(0),
+        totalVat.toFixed(0),
+        grandTotal.toFixed(0),
+        journalEntry.id,
+        data.description || null,
+        userId,
+        now
+      ]
+    );
+
+    for (const item of processedItems) {
       await tx.run(
-        `INSERT INTO purchase_documents (
-          id, tenant_id, company_id, branch_id, warehouse_id,
-          supplier_party_id, freight_party_id, document_number, date_shamsi,
-          total_goods_amount, freight_amount, total_discount, total_vat, grand_total,
-          status, journal_entry_id, description, created_by_user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)`,
+        `INSERT INTO purchase_document_items (
+          id, purchase_document_id, product_id, variant_id, quantity, unit_cost,
+          total_amount, discount_amount, vat_amount, allocated_freight_cost, final_unit_cost, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
+          item.id,
           purchaseId,
-          tenantId,
-          companyId,
-          branchId,
-          data.warehouseId,
-          data.supplierPartyId,
-          data.freightPartyId || null,
-          data.documentNumber,
-          data.dateShamsi,
-          totalGoodsAmount.toFixed(0),
-          freightAmt.toFixed(0),
-          totalDiscount.toFixed(0),
-          totalVat.toFixed(0),
-          grandTotal.toFixed(0),
-          journalEntry.id,
-          data.description || null,
-          userId,
+          item.productId,
+          item.variantId || null,
+          item.quantity,
+          item.unitCost,
+          item.totalAmount,
+          item.discountAmount,
+          item.vatAmount,
+          item.allocatedFreightCost,
+          item.finalUnitCost,
           now
         ]
       );
-
-      for (const item of processedItems) {
-        await tx.run(
-          `INSERT INTO purchase_document_items (
-            id, purchase_document_id, product_id, variant_id, quantity, unit_cost,
-            total_amount, discount_amount, vat_amount, allocated_freight_cost, final_unit_cost, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            item.id,
-            purchaseId,
-            item.productId,
-            item.variantId || null,
-            item.quantity,
-            item.unitCost,
-            item.totalAmount,
-            item.discountAmount,
-            item.vatAmount,
-            item.allocatedFreightCost,
-            item.finalUnitCost,
-            now
-          ]
-        );
-      }
-    });
+    }
 
     return {
       id: purchaseId,
@@ -283,6 +286,7 @@ export class PurchasesService {
       journalEntryId: journalEntry.id,
       items: processedItems
     };
+  });
   }
 
   async listPurchases(tenantId: string, companyId: string) {

@@ -10,6 +10,7 @@ import {
   STANDARD_IRANIAN_GROUPS,
   STANDARD_IRANIAN_HEADS,
 } from '@accounting/core';
+import { DEFAULT_ACCOUNT_CODES } from '../accounting/account-mapping.service';
 
 @Injectable()
 export class OnboardingService {
@@ -114,7 +115,8 @@ export class OnboardingService {
       );
 
       // ۵. ایجاد کاربر ادمین سازمان
-      const hashedPassword = await bcrypt.hash('Admin@2026!Sec', 10);
+      const rawPassword = input.adminPassword || 'Admin@2026!Sec';
+      const hashedPassword = await bcrypt.hash(rawPassword, 10);
       await tx.run(
         `INSERT INTO users (
           id, tenant_id, mobile, email, password_hash, full_name, is_super_admin, is_active, created_at
@@ -150,6 +152,37 @@ export class OnboardingService {
         `INSERT INTO user_roles (user_id, role_id, branch_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
         [adminUserId, adminRoleId, branchId],
       );
+
+      // ۵.۲. ایجاد دسترسی‌های پیش‌فرض و اتصال نقش‌ها به دسترسی‌ها (RBAC)
+      const standardPerms = [
+        { id: 'perm-acc-write', code: 'ACCOUNTING_WRITE', module: 'ACCOUNTING', title: 'ثبت اسناد دوبل' },
+        { id: 'perm-acc-close', code: 'ACCOUNTING_CLOSE', module: 'ACCOUNTING', title: 'بستن حساب‌ها و دوره مالی' },
+        { id: 'perm-payroll-manage', code: 'PAYROLL_MANAGE', module: 'PAYROLL', title: 'مدیریت و تایید حقوق و دستمزد' },
+        { id: 'perm-saas-admin', code: 'SAAS_ADMIN', module: 'SAAS', title: 'مدیریت اشتراک و سهمیه‌ها' },
+      ];
+      for (const p of standardPerms) {
+        await tx.run(
+          `INSERT INTO permissions (id, code, module, title) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+          [p.id, p.code, p.module, p.title]
+        );
+      }
+
+      const rolePermMap: Record<string, string[]> = {
+        ADMIN: ['perm-acc-write', 'perm-acc-close', 'perm-payroll-manage', 'perm-saas-admin'],
+        ACCOUNTANT: ['perm-acc-write', 'perm-acc-close', 'perm-payroll-manage'],
+        AUDITOR: ['perm-acc-write'],
+        CASHIER: ['perm-acc-write'],
+      };
+
+      for (const [rCode, pIds] of Object.entries(rolePermMap)) {
+        const rId = `role-${tenantId}-${rCode.toLowerCase()}`;
+        for (const pId of pIds) {
+          await tx.run(
+            `INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?) ON CONFLICT (role_id, permission_id) DO NOTHING`,
+            [rId, pId]
+          );
+        }
+      }
 
       // ۶. درج گروه‌ها و حساب‌های کل استاندارد برای سازمان جدید
       for (const g of STANDARD_IRANIAN_GROUPS) {
@@ -188,6 +221,18 @@ export class OnboardingService {
           );
           accountsInserted++;
         }
+      }
+
+      // ۶.۲. ثبت نگاشت خودکار حساب‌ها (Account Mappings) برای کلیه کلیدهای استاندارد مالی
+      for (const [key, code] of Object.entries(DEFAULT_ACCOUNT_CODES)) {
+        const subId = `sub-${tenantId}-${code}`;
+        const mapId = `map-${tenantId}-${companyId}-${key.toLowerCase()}`;
+        await tx.run(
+          `INSERT INTO account_mappings (
+            id, tenant_id, company_id, mapping_key, subsidiary_account_id, description, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tenant_id, company_id, mapping_key) DO UPDATE SET subsidiary_account_id = EXCLUDED.subsidiary_account_id`,
+          [mapId, tenantId, companyId, key, subId, `نگاشت خودکار ${key}`, now]
+        );
       }
 
       // ۷. اطمینان از وجود پلن آزمایشی رایگان در صورت نبود

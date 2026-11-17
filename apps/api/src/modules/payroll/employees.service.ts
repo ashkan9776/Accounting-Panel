@@ -145,7 +145,7 @@ export class EmployeesService {
       [id, tenantId, companyId]
     );
 
-    const activeContract = contracts.find((c: any) => c.is_active === 1) || contracts[0] || null;
+    const activeContract = contracts.find((c: any) => Boolean(c.is_active)) || contracts[0] || null;
 
     return { ...employee, activeContract, contracts };
   }

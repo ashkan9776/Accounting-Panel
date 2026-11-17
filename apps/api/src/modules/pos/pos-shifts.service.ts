@@ -55,11 +55,11 @@ export class PosShiftsService {
       throw new BadRequestException('سال مالی باز و فعالی جهت افتتاح شیفت صندوق یافت نشد.');
     }
 
-    const maxShiftRow = await this.db.queryOne(
-      'SELECT COUNT(*) as count FROM pos_shifts WHERE tenant_id = ? AND company_id = ?',
+    const maxShiftRow = await this.db.queryOne<{ count: any }>(
+      'SELECT COUNT(*)::int as count FROM pos_shifts WHERE tenant_id = ? AND company_id = ?',
       [tenantId, companyId]
     );
-    const shiftNumber = `SHF-${Date.now().toString().substring(6)}-${(maxShiftRow?.count || 0) + 1}`;
+    const shiftNumber = `SHF-${Date.now().toString().substring(6)}-${Number(maxShiftRow?.count ?? 0) + 1}`;
     const id = randomUUID();
     const now = new Date().toISOString();
     const openingBal = new Decimal(data.openingCashBalance || 0);
@@ -146,7 +146,7 @@ export class PosShiftsService {
 
     const id = randomUUID();
     const now = new Date().toISOString();
-    const dateShamsi = data.dateShamsi || '1403/11/15';
+    const dateShamsi = data.dateShamsi || formatToShamsiString(new Date());
 
     await this.db.run(
       `INSERT INTO pos_cash_movements (
@@ -226,7 +226,7 @@ export class PosShiftsService {
     }
 
     const now = new Date().toISOString();
-    const dateShamsi = data.dateShamsi || '1403/11/15';
+    const dateShamsi = data.dateShamsi || formatToShamsiString(new Date());
     const actualCash = new Decimal(data.actualCashBalance);
     const expectedCash = new Decimal(shift.expected_cash_balance);
     const discrepancy = actualCash.minus(expectedCash); // منفی: کسری صندوق / مثبت: فزونی صندوق

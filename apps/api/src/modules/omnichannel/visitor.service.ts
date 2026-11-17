@@ -99,7 +99,7 @@ export class VisitorService {
         data.visitDateShamsi,
         data.latitude,
         data.longitude,
-        geofence.isWithinGeofence ? 1 : 0,
+        Boolean(geofence.isWithinGeofence),
         data.visitNotes || null,
         data.salesDocumentId || null,
         now

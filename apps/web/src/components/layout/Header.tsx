@@ -18,8 +18,11 @@ import {
   ShoppingCart,
   Sparkles,
   Layers,
+  GitBranch,
 } from 'lucide-react';
 import Link from 'next/link';
+import { fetchApi } from '../../lib/api';
+import { toPersianDigits } from '../../lib/formatters';
 
 export const INDUSTRY_PRESETS = [
   { id: 'ENTERPRISE', title: 'نمای جامع هلدینگ (تمام ماژول‌ها)', icon: Sparkles, color: 'text-purple-600', badge: 'جامع' },
@@ -37,6 +40,11 @@ export function Header() {
   const [activePreset, setActivePreset] = useState<string>('RESTAURANT');
   const [showPresetDropdown, setShowPresetDropdown] = useState(false);
 
+  const [branches, setBranches] = useState<any[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+  const [fiscalYears, setFiscalYears] = useState<any[]>([]);
+  const [selectedFiscalYearId, setSelectedFiscalYearId] = useState<string>('');
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedUser = localStorage.getItem('user');
@@ -51,6 +59,12 @@ export function Header() {
       const storedComp = localStorage.getItem('company_name');
       if (storedComp) setCompanyName(storedComp);
 
+      const storedBranch = localStorage.getItem('branch_id');
+      if (storedBranch) setSelectedBranchId(storedBranch);
+
+      const storedFy = localStorage.getItem('fiscal_year_id');
+      if (storedFy) setSelectedFiscalYearId(storedFy);
+
       const storedPreset = localStorage.getItem('active_preset');
       if (storedPreset) {
         setActivePreset(storedPreset);
@@ -58,8 +72,57 @@ export function Header() {
         localStorage.setItem('active_preset', 'RESTAURANT');
         setActivePreset('RESTAURANT');
       }
+
+      // بارگذاری داده‌های چندمستاجری از سرور
+      Promise.all([
+        fetchApi('/tenancy/company').catch(() => null),
+        fetchApi('/tenancy/branches').catch(() => null),
+        fetchApi('/tenancy/fiscal-years').catch(() => null),
+      ]).then(([compRes, branchRes, fyRes]) => {
+        if (compRes?.data) {
+          const name = compRes.data.legal_name || compRes.data.trade_name;
+          if (name) {
+            setCompanyName(name);
+            localStorage.setItem('company_name', name);
+          }
+        }
+        if (branchRes?.data && Array.isArray(branchRes.data)) {
+          setBranches(branchRes.data);
+          if (!storedBranch && branchRes.data.length > 0) {
+            const defBranch = branchRes.data.find((b: any) => b.is_central) || branchRes.data[0];
+            setSelectedBranchId(defBranch.id);
+            localStorage.setItem('branch_id', defBranch.id);
+          }
+        }
+        if (fyRes?.data && Array.isArray(fyRes.data)) {
+          setFiscalYears(fyRes.data);
+          if (!storedFy && fyRes.data.length > 0) {
+            const defFy = fyRes.data.find((f: any) => !f.is_closed) || fyRes.data[0];
+            setSelectedFiscalYearId(defFy.id);
+            localStorage.setItem('fiscal_year_id', defFy.id);
+          }
+        }
+      });
     }
   }, []);
+
+  const handleSwitchBranch = (branchId: string) => {
+    setSelectedBranchId(branchId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('branch_id', branchId);
+      window.dispatchEvent(new CustomEvent('branchChanged', { detail: branchId }));
+      window.location.reload();
+    }
+  };
+
+  const handleSwitchFiscalYear = (fyId: string) => {
+    setSelectedFiscalYearId(fyId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('fiscal_year_id', fyId);
+      window.dispatchEvent(new CustomEvent('fiscalYearChanged', { detail: fyId }));
+      window.location.reload();
+    }
+  };
 
   const handleSwitchPreset = (presetId: string) => {
     setActivePreset(presetId);
@@ -81,17 +144,50 @@ export function Header() {
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shadow-xs sticky top-0 z-30 no-print print:hidden">
       {/* اطلاعات شرکت، شعبه و سال مالی */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 text-xs text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-          <Building className="w-3.5 h-3.5 text-slate-500" />
+          <Building className="w-3.5 h-3.5 text-slate-500 shrink-0" />
           <span className="font-semibold text-slate-800">{companyName}</span>
-          <span className="text-slate-300">|</span>
-          <span className="text-slate-600">شعبه مرکزی</span>
         </div>
 
-        <div className="hidden md:flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-          <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-          <span>سال مالی ۱۴۰۳</span>
+        {/* انتخاب شعبه */}
+        <div className="hidden sm:flex items-center gap-1.5 text-xs bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+          <GitBranch className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+          <select
+            value={selectedBranchId}
+            onChange={(e) => handleSwitchBranch(e.target.value)}
+            className="bg-transparent text-slate-700 font-semibold focus:outline-none cursor-pointer"
+          >
+            {branches.length > 0 ? (
+              branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))
+            ) : (
+              <option value="branch-central-1">شعبه مرکزی</option>
+            )}
+          </select>
+        </div>
+
+        {/* انتخاب سال مالی */}
+        <div className="hidden md:flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+          <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <select
+            value={selectedFiscalYearId}
+            onChange={(e) => handleSwitchFiscalYear(e.target.value)}
+            className="bg-transparent text-emerald-900 font-bold focus:outline-none cursor-pointer"
+          >
+            {fiscalYears.length > 0 ? (
+              fiscalYears.map((fy) => (
+                <option key={fy.id} value={fy.id}>
+                  سال مالی {toPersianDigits(fy.title || fy.year)}
+                </option>
+              ))
+            ) : (
+              <option value="fy-1403">سال مالی ۱۴۰۳</option>
+            )}
+          </select>
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block mr-1"></span>
         </div>
 

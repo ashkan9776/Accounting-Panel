@@ -113,7 +113,7 @@ export class WorkCentersService {
     }
     if (data.isActive !== undefined) {
       fields.push('is_active = ?');
-      params.push(data.isActive ? 1 : 0);
+      params.push(Boolean(data.isActive));
     }
 
     if (fields.length > 0) {

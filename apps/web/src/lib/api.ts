@@ -25,6 +25,16 @@ export function getStoredCompanyId(): string {
   return localStorage.getItem('company_id') || 'comp-pishro-1';
 }
 
+export function getStoredBranchId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('branch_id');
+}
+
+export function getStoredFiscalYearId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('fiscal_year_id');
+}
+
 export async function fetchApi<T = any>(
   endpoint: string,
   options: RequestInit = {}
@@ -32,11 +42,15 @@ export async function fetchApi<T = any>(
   const token = getStoredToken();
   const tenantId = getStoredTenantId();
   const companyId = getStoredCompanyId();
+  const branchId = getStoredBranchId();
+  const fiscalYearId = getStoredFiscalYearId();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-tenant-id': tenantId,
     'x-company-id': companyId,
+    ...(branchId ? { 'x-branch-id': branchId } : {}),
+    ...(fiscalYearId ? { 'x-fiscal-year-id': fiscalYearId } : {}),
     ...(options.headers as Record<string, string>),
   };
 

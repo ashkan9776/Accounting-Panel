@@ -56,7 +56,7 @@ export class InventoryService {
     await this.db.run(
       `INSERT INTO product_units (id, tenant_id, company_id, code, title, symbol, is_reference, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, tenantId, companyId, data.code, data.title, data.symbol || null, data.isReference ? 1 : 0, now]
+      [id, tenantId, companyId, data.code, data.title, data.symbol || null, Boolean(data.isReference), now]
     );
     return { id, ...data };
   }
@@ -222,9 +222,11 @@ export class InventoryService {
     tenantId: string,
     companyId: string,
     warehouseId: string,
-    productId: string
+    productId: string,
+    tx?: DatabaseService
   ): Promise<StockLedgerState> {
-    const latest = await this.db.queryOne(
+    const runner = tx || this.db;
+    const latest = await runner.queryOne(
       `SELECT * FROM stock_ledger_entries
        WHERE tenant_id = ? AND company_id = ? AND warehouse_id = ? AND product_id = ?
        ORDER BY seq_no DESC LIMIT 1`,
@@ -275,11 +277,14 @@ export class InventoryService {
       fifoLayers?: any[];
       journalEntryId?: string;
       description?: string;
-    }
+    },
+    tx?: DatabaseService
   ) {
     const id = randomUUID();
     const now = new Date().toISOString();
-    return await this.db.transaction(async (tx) => {
+    const runner = tx || this.db;
+    return await runner.transaction(async (txClient) => {
+      const tx = txClient;
       await tx.run('SELECT pg_advisory_xact_lock(hashtext($1))', [
         `stock:${tenantId}:${data.warehouseId}:${data.productId}`
       ]);

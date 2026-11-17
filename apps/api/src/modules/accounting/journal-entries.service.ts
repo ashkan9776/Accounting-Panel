@@ -61,9 +61,12 @@ export class JournalEntriesService {
       sourceModule?: string;
       sourceDocumentId?: string;
       lines: JournalLineInput[];
-    }
+    },
+    tx?: DatabaseService
   ) {
-    return await this.db.transaction(async (tx) => {
+    const runner = tx || this.db;
+    return await runner.transaction(async (txClient) => {
+      const tx = txClient;
       // قفل تراکنش PostgreSQL روی تنانت و سال مالی جهت تضمین توالی بدون وقفه شماره‌ها
       await tx.run('SELECT pg_advisory_xact_lock(hashtext($1))', [`tenant:${tenantId}:fy:${fiscalYearId}`]);
 
@@ -293,14 +296,15 @@ export class JournalEntriesService {
     return { ...entry, lines };
   }
 
-  async approveEntry(tenantId: string, id: string, userId: string) {
+  async approveEntry(tenantId: string, id: string, userId: string, tx?: DatabaseService) {
+    const runner = tx || this.db;
     const entry = await this.getEntryById(tenantId, id);
     if (entry.status !== JournalEntryStatus.DRAFT) {
       throw new BadRequestException(`فقط اسناد در وضعیت پیش‌نویس قابل تایید هستند. وضعیت فعلی: ${entry.status}`);
     }
 
     const now = new Date().toISOString();
-    await this.db.run(
+    await runner.run(
       'UPDATE journal_entries SET status = ?, approved_by_user_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
       [JournalEntryStatus.APPROVED, userId, now, id, tenantId]
     );
@@ -364,42 +368,42 @@ export class JournalEntriesService {
   }
 
   async reverseEntry(tenantId: string, id: string, userId: string, reversalDateShamsi: string, reason?: string) {
-    const entry = await this.getEntryById(tenantId, id);
-    if (entry.status !== JournalEntryStatus.FINALIZED && entry.status !== JournalEntryStatus.APPROVED) {
-      throw new BadRequestException('تنها اسناد تایید شده یا قطعی قابلیت برگشت دارند.');
-    }
-    if (entry.reversal_entry_id) {
-      throw new BadRequestException(`این سند قبلاً توسط سند معکوس ${entry.reversal_entry_id} اصلاح شده است.`);
-    }
-
-    const reversalLines: JournalLineInput[] = entry.lines.map((l: any) => ({
-      subsidiaryAccountId: l.subsidiary_account_id,
-      floatingDimension1Id: l.floating_dimension_1_id,
-      floatingDimension2Id: l.floating_dimension_2_id,
-      floatingDimension3Id: l.floating_dimension_3_id,
-      debit: l.credit, // معکوس
-      credit: l.debit, // معکوس
-      description: `[سند برگشتی] ${l.description}`
-    }));
-
-    const reversalEntry = await this.createEntry(
-      tenantId,
-      entry.company_id,
-      entry.branch_id,
-      entry.fiscal_year_id,
-      userId,
-      {
-        entryDateShamsi: reversalDateShamsi,
-        entryType: JournalEntryType.REVERSAL,
-        description: `برگشت سند شماره ${entry.sequence_number}: ${reason || entry.description}`,
-        sourceModule: entry.source_module,
-        sourceDocumentId: entry.source_document_id,
-        lines: reversalLines
+    return await this.db.transaction(async (tx) => {
+      const entry = await this.getEntryById(tenantId, id);
+      if (entry.status !== JournalEntryStatus.FINALIZED && entry.status !== JournalEntryStatus.APPROVED) {
+        throw new BadRequestException('تنها اسناد تایید شده یا قطعی قابلیت برگشت دارند.');
       }
-    );
+      if (entry.reversal_entry_id) {
+        throw new BadRequestException(`این سند قبلاً توسط سند معکوس ${entry.reversal_entry_id} اصلاح شده است.`);
+      }
 
-    // اتمیک‌سازی ثبت برگشت سند و به‌روزرسانی سند اصلی در یک تراکنش واحد
-    await this.db.transaction(async (tx) => {
+      const reversalLines: JournalLineInput[] = entry.lines.map((l: any) => ({
+        subsidiaryAccountId: l.subsidiary_account_id,
+        floatingDimension1Id: l.floating_dimension_1_id,
+        floatingDimension2Id: l.floating_dimension_2_id,
+        floatingDimension3Id: l.floating_dimension_3_id,
+        debit: l.credit, // معکوس
+        credit: l.debit, // معکوس
+        description: `[سند برگشتی] ${l.description}`
+      }));
+
+      const reversalEntry = await this.createEntry(
+        tenantId,
+        entry.company_id,
+        entry.branch_id,
+        entry.fiscal_year_id,
+        userId,
+        {
+          entryDateShamsi: reversalDateShamsi,
+          entryType: JournalEntryType.REVERSAL,
+          description: `برگشت سند شماره ${entry.sequence_number}: ${reason || entry.description}`,
+          sourceModule: entry.source_module,
+          sourceDocumentId: entry.source_document_id,
+          lines: reversalLines
+        },
+        tx
+      );
+
       // علامت‌گذاری سند اصلی به عنوان REVERSED
       await tx.run(
         'UPDATE journal_entries SET status = ?, reversal_entry_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
@@ -410,15 +414,15 @@ export class JournalEntriesService {
         'UPDATE journal_entries SET reversed_entry_id = ?, status = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
         [id, JournalEntryStatus.APPROVED, new Date().toISOString(), reversalEntry.id, tenantId]
       );
-    });
 
-    return {
-      originalEntryId: id,
-      reversalEntry: {
-        ...reversalEntry,
-        reversedEntryId: id,
-        status: JournalEntryStatus.APPROVED
-      }
-    };
+      return {
+        originalEntryId: id,
+        reversalEntry: {
+          ...reversalEntry,
+          reversedEntryId: id,
+          status: JournalEntryStatus.APPROVED
+        }
+      };
+    });
   }
 }

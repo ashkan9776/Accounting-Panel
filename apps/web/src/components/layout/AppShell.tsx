@@ -1,13 +1,25 @@
 'use client';
 
-import React from 'react';
-import { usePathname } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const isAuthOrOnboarding = pathname.startsWith('/auth') || pathname.startsWith('/onboarding');
+
+  useEffect(() => {
+    setMounted(true);
+    if (!isAuthOrOnboarding) {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        router.push('/auth/login');
+      }
+    }
+  }, [isAuthOrOnboarding, router]);
 
   if (isAuthOrOnboarding) {
     return <main className="min-h-screen bg-slate-100 flex flex-col justify-center">{children}</main>;

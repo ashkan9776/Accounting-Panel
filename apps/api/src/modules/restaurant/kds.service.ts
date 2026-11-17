@@ -31,11 +31,11 @@ export class KdsService {
 
     for (const [station, itemIds] of Object.entries(stationMap)) {
       const ticketId = randomUUID();
-      const countRow = await this.db.queryOne(
-        'SELECT COUNT(*) as count FROM restaurant_kds_tickets WHERE tenant_id = ? AND company_id = ?',
+      const countRow = await this.db.queryOne<{ count: any }>(
+        'SELECT COUNT(*)::int as count FROM restaurant_kds_tickets WHERE tenant_id = ? AND company_id = ?',
         [tenantId, companyId]
       );
-      const ticketNumber = `TKT-${(countRow?.count || 0) + 1}`;
+      const ticketNumber = `TKT-${Number(countRow?.count ?? 0) + 1}`;
 
       await this.db.run(
         `INSERT INTO restaurant_kds_tickets (
@@ -149,12 +149,12 @@ export class KdsService {
 
     // بررسی اتمام تمام تیکت‌های سفارش جهت آماده‌سازی کل غذا
     if (newStatus === KdsTicketStatus.READY) {
-      const remainingUnready = await this.db.queryOne(
-        `SELECT COUNT(*) as count FROM restaurant_kds_tickets
+      const remainingUnready = await this.db.queryOne<{ count: any }>(
+        `SELECT COUNT(*)::int as count FROM restaurant_kds_tickets
          WHERE restaurant_order_id = ? AND status != 'READY' AND status != 'SERVED'`,
         [ticket.restaurant_order_id]
       );
-      if (remainingUnready?.count === 0) {
+      if (Number(remainingUnready?.count ?? 0) === 0) {
         await this.db.run(
           `UPDATE restaurant_orders
            SET status = 'READY_TO_SERVE', updated_at = ?

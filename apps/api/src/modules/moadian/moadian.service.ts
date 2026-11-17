@@ -39,8 +39,8 @@ export class MoadianService {
     const { private_key_pem, ...safeSettings } = settings;
     return {
       ...safeSettings,
-      is_sandbox_mode: (safeSettings.is_sandbox_mode === true || safeSettings.is_sandbox_mode === 1 || safeSettings.is_sandbox_mode === '1') ? 1 : 0,
-      is_active: (safeSettings.is_active === true || safeSettings.is_active === 1 || safeSettings.is_active === '1') ? 1 : 0
+      is_sandbox_mode: Boolean(safeSettings.is_sandbox_mode),
+      is_active: Boolean(safeSettings.is_active)
     };
   }
 
@@ -165,11 +165,11 @@ export class MoadianService {
     );
 
     // محاسبه شماره سریال ترتیبی بعدی برای این حافظه مالیاتی
-    const maxSerialRow = await this.db.queryOne(
-      'SELECT COUNT(*) as count FROM moadian_invoices WHERE tenant_id = ? AND company_id = ?',
+    const maxSerialRow = await this.db.queryOne<{ count: any }>(
+      'SELECT COUNT(*)::int as count FROM moadian_invoices WHERE tenant_id = ? AND company_id = ?',
       [tenantId, companyId]
     );
-    const serial = (maxSerialRow?.count || 0) + 1;
+    const serial = Number(maxSerialRow?.count ?? 0) + 1;
 
     // تولید شناسه یکتای مالیاتی ۲۲ کاراکتری رسمی
     const issueDate = new Date();

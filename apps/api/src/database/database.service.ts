@@ -269,7 +269,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       await client.query('BEGIN');
 
       if (tenantId) {
-        await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+        await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [tenantId]);
       }
 
       const txWrapper: DatabaseService = {

@@ -12,7 +12,8 @@ import {
   KitchenStation,
   SplitBillMethod,
   RestaurantPostingEngine,
-  JournalEntryType
+  JournalEntryType,
+  formatToShamsiString
 } from '@accounting/core';
 import Decimal from 'decimal.js';
 
@@ -68,12 +69,24 @@ export class RestaurantOrdersService {
 
     const orderId = randomUUID();
     const now = new Date().toISOString();
-    const countRow = await this.db.queryOne(
-      'SELECT COUNT(*) as count FROM restaurant_orders WHERE tenant_id = ? AND company_id = ?',
+    const countRow = await this.db.queryOne<{ count: any }>(
+      'SELECT COUNT(*)::int as count FROM restaurant_orders WHERE tenant_id = ? AND company_id = ?',
       [tenantId, companyId]
     );
-    const orderNumber = `REST-${(countRow?.count || 0) + 1}`;
-    const dateShamsi = '1403/11/15'; // پیش‌فرض سال جاری مالی
+    const orderNumber = `REST-${Number(countRow?.count ?? 0) + 1}`;
+    let dateShamsi = (data as any).dateShamsi;
+    if (!dateShamsi) {
+      const todayShamsi = formatToShamsiString(new Date());
+      const fy = await this.db.queryOne<any>(
+        'SELECT start_date_shamsi, end_date_shamsi FROM fiscal_years WHERE tenant_id = ? AND company_id = ? AND is_closed = false ORDER BY start_date_shamsi DESC LIMIT 1',
+        [tenantId, companyId]
+      );
+      if (fy && (todayShamsi < fy.start_date_shamsi || todayShamsi > fy.end_date_shamsi)) {
+        dateShamsi = fy.end_date_shamsi;
+      } else {
+        dateShamsi = todayShamsi;
+      }
+    }
 
     let totalGross = new Decimal(0);
     let totalDiscount = new Decimal(0);

@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import {
   ChequeDirection,
   ChequeStatus,
@@ -17,7 +18,8 @@ export class ChequesService {
 
   constructor(
     private readonly db: DatabaseService,
-    private readonly journalService: JournalEntriesService
+    private readonly journalService: JournalEntriesService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   async inquireSayad(sayadId: string) {
@@ -76,6 +78,12 @@ export class ChequesService {
 
     // ۳. صدور سند حسابداری در صورت فعال بودن policy
     if (policy !== PostingPolicy.MANUAL) {
+      const [arId, apId, bankId] = await Promise.all([
+        this.accountMapping.getAccount(tenantId, companyId, 'AR', 'sub-1301'),
+        this.accountMapping.getAccount(tenantId, companyId, 'AP', 'sub-3201'),
+        this.accountMapping.getAccount(tenantId, companyId, 'BANK', 'sub-1103'),
+      ]);
+
       if (data.isGuarantee) {
         // چک ضمانتی (حساب‌های انتظامی)
         const lines = ChequePostingEngine.buildGuaranteeLines({
@@ -96,7 +104,8 @@ export class ChequesService {
           amount: data.amount,
           chequeSerialNumber: data.chequeSerialNumber,
           sayadId: data.sayadId,
-          drawerPartyDimensionId: drawerDimId
+          drawerPartyDimensionId: drawerDimId,
+          accountsReceivableAccountId: arId
         });
 
         const entry = await this.journalService.createEntry(tenantId, companyId, branchId, fiscalYearId, userId, {
@@ -113,7 +122,8 @@ export class ChequesService {
           sayadId: data.sayadId,
           drawerPartyDimensionId: drawerDimId || '',
           payeePartyDimensionId: payeeDimId,
-          bankDimensionId: data.bankDimensionId
+          bankDimensionId: data.bankDimensionId,
+          accountsPayableAccountId: apId
         });
 
         const entry = await this.journalService.createEntry(tenantId, companyId, branchId, fiscalYearId, userId, {
@@ -161,7 +171,7 @@ export class ChequesService {
         journalEntryId || null,
         'INQUIRED',
         inquiry.color,
-        data.isGuarantee ? 1 : 0,
+        Boolean(data.isGuarantee),
         data.description || null,
         now,
         now
@@ -228,6 +238,11 @@ export class ChequesService {
 
     // تولید آرتیکل‌های سند حسابداری متناسب با تغییر وضعیت
     if (policy !== PostingPolicy.MANUAL) {
+      const [bankId, apId] = await Promise.all([
+        this.accountMapping.getAccount(tenantId, companyId, 'BANK', 'sub-1103'),
+        this.accountMapping.getAccount(tenantId, companyId, 'AP', 'sub-3201'),
+      ]);
+
       let lines;
 
       if (data.toStatus === ChequeStatus.IN_CLEARING) {
@@ -245,7 +260,8 @@ export class ChequesService {
             amount: cheque.amount,
             chequeSerialNumber: cheque.cheque_serial_number,
             drawerPartyDimensionId: drawerDimId || 'dim-cust-1',
-            bankDimensionId: data.bankDimensionId || 'dim-bank-1'
+            bankDimensionId: data.bankDimensionId || 'dim-bank-1',
+            bankAccountId: bankId
           });
         } else {
           // پاس شدن چک پرداختی
@@ -253,7 +269,8 @@ export class ChequesService {
             amount: cheque.amount,
             chequeSerialNumber: cheque.cheque_serial_number,
             drawerPartyDimensionId: drawerDimId || '',
-            bankDimensionId: data.bankDimensionId || 'dim-bank-1'
+            bankDimensionId: data.bankDimensionId || 'dim-bank-1',
+            bankAccountId: bankId
           });
         }
       } else if (data.toStatus === ChequeStatus.BOUNCED) {
@@ -270,7 +287,8 @@ export class ChequesService {
           amount: cheque.amount,
           chequeSerialNumber: cheque.cheque_serial_number,
           drawerPartyDimensionId: drawerDimId || 'dim-cust-1',
-          payeePartyDimensionId: data.payeePartyDimensionId || 'dim-supp-1'
+          payeePartyDimensionId: data.payeePartyDimensionId || 'dim-supp-1',
+          accountsPayableAccountId: apId
         });
       }
 

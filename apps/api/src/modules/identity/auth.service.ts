@@ -45,7 +45,7 @@ export class AuthService {
   async login(
     mobile: string,
     password: string,
-    tenantId: string = 'tenant-pishro',
+    tenantId?: string,
     twoFactorCode?: string,
     clientIp?: string,
     userAgent?: string,
@@ -54,17 +54,29 @@ export class AuthService {
       throw new BadRequestException('شماره موبایل و کلمه عبور الزامی است.');
     }
 
-    let user = await this.db.queryOne(
-      'SELECT * FROM users WHERE mobile = ? AND tenant_id = ?',
-      [mobile.trim(), tenantId]
-    );
-
-    if (!user && (tenantId === 'tenant-pishro' || !tenantId)) {
-      // جستجوی تکمیلی در صورت عدم تعیین تنانت اختصاصی (پشتیبانی از لاگین مستقیم کاربران سازمان‌های تازه تاسیس)
+    let user: any = null;
+    if (tenantId && tenantId !== 'tenant-pishro') {
       user = await this.db.queryOne(
-        'SELECT * FROM users WHERE mobile = ? ORDER BY created_at DESC LIMIT 1',
+        'SELECT * FROM users WHERE mobile = ? AND tenant_id = ?',
+        [mobile.trim(), tenantId]
+      );
+    } else {
+      // جستجوی چندتنانتی: در صورت وجود کاربر با موبایل یکسان در چند تنانت، تطبیق با کلمه عبور
+      const candidates = await this.db.query(
+        'SELECT * FROM users WHERE mobile = ? ORDER BY created_at DESC',
         [mobile.trim()]
       );
+      if (candidates.length === 1) {
+        user = candidates[0];
+      } else if (candidates.length > 1) {
+        for (const cand of candidates) {
+          if (await bcrypt.compare(password, cand.password_hash)) {
+            user = cand;
+            break;
+          }
+        }
+        if (!user) user = candidates[0];
+      }
     }
 
     if (!user) {
@@ -152,9 +164,38 @@ export class AuthService {
       [user.id]
     );
 
+    // واکشی شرکت، شعبه پیش‌فرض و سال مالی فعال کاربر
+    const company = await this.db.queryOne<any>(
+      'SELECT id, legal_name, trade_name FROM companies WHERE tenant_id = ? ORDER BY created_at ASC LIMIT 1',
+      [user.tenant_id]
+    );
+    const companyId = company?.id || null;
+    const companyName = company?.legal_name || company?.trade_name || null;
+
+    let branchId: string | null = null;
+    if (companyId) {
+      const branch = await this.db.queryOne<any>(
+        'SELECT id FROM branches WHERE tenant_id = ? AND company_id = ? ORDER BY is_central DESC, created_at ASC LIMIT 1',
+        [user.tenant_id, companyId]
+      );
+      branchId = branch?.id || null;
+    }
+
+    let fiscalYearId: string | null = null;
+    if (companyId) {
+      const fy = await this.db.queryOne<any>(
+        'SELECT id FROM fiscal_years WHERE tenant_id = ? AND company_id = ? AND is_closed = false ORDER BY start_date_shamsi DESC LIMIT 1',
+        [user.tenant_id, companyId]
+      );
+      fiscalYearId = fy?.id || null;
+    }
+
     const payload = {
       sub: user.id,
       tenantId: user.tenant_id,
+      companyId,
+      branchId,
+      fiscalYearId,
       mobile: user.mobile,
       isSuperAdmin: Boolean(user.is_super_admin)
     };
@@ -166,6 +207,10 @@ export class AuthService {
       user: {
         id: user.id,
         tenantId: user.tenant_id,
+        companyId,
+        companyName,
+        branchId,
+        fiscalYearId,
         mobile: user.mobile,
         email: user.email,
         fullName: user.full_name,

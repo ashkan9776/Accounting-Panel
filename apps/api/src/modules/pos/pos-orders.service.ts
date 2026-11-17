@@ -9,7 +9,8 @@ import {
   ValuationEngine,
   ValuationMethod,
   StockDocumentType,
-  numberToPersianWords
+  numberToPersianWords,
+  formatToShamsiString
 } from '@accounting/core';
 import Decimal from 'decimal.js';
 
@@ -74,7 +75,7 @@ export class PosOrdersService {
 
     const orderId = randomUUID();
     const now = new Date().toISOString();
-    const dateShamsi = shift.opened_at.split('T')[0]; // استفاده از تاریخ جاری شیفت
+    const dateShamsi = formatToShamsiString(new Date(shift.opened_at)); // تاریخ شمسی استاندارد شیفت جاری
     const orderStatus = data.status || PosOrderStatus.COMPLETED;
 
     let totalGross = new Decimal(0);
@@ -248,7 +249,7 @@ export class PosOrdersService {
         cashPaid.toFixed(0),
         cardPaid.toFixed(0),
         data.idempotencyKey || null,
-        data.isOfflineSynced ? 1 : 0,
+        Boolean(data.isOfflineSynced),
         data.offlineCreatedAt || null,
         now
       ]
@@ -273,7 +274,7 @@ export class PosOrdersService {
           pit.vatAmount,
           pit.unitCogs,
           pit.totalCogs,
-          pit.isWeighted,
+          Boolean(pit.isWeighted),
           pit.weightGrams,
           pit.barcodeScanned,
           now

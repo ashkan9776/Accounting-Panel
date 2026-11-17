@@ -106,7 +106,7 @@ export class BomsService {
           item.componentProductId,
           item.quantity.toString(),
           item.scrapPercentage ? item.scrapPercentage.toString() : '0',
-          item.isSubAssembly ? 1 : 0,
+          Boolean(item.isSubAssembly),
           item.subBomId || null,
           item.substituteProductId || null,
           item.lineOrder || lineOrder++,

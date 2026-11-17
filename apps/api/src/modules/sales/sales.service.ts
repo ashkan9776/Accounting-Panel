@@ -56,14 +56,15 @@ export class SalesService {
       throw new BadRequestException('فاکتور فروش باید حداقل دارای یک سطر کالا یا خدمت باشد.');
     }
 
-    // ۱. استعلام خریدار و حساب تفصیلی شناور
-    const customer = await this.db.queryOne(
-      'SELECT id, name, floating_dimension_id FROM parties WHERE tenant_id = ? AND company_id = ? AND id = ?',
-      [tenantId, companyId, data.customerPartyId]
-    );
-    if (!customer) {
-      throw new NotFoundException(`مشتری با شناسه ${data.customerPartyId} یافت نشد.`);
-    }
+    return await this.db.transaction(async (tx) => {
+      // ۱. استعلام خریدار و حساب تفصیلی شناور
+      const customer = await tx.queryOne(
+        'SELECT id, name, floating_dimension_id FROM parties WHERE tenant_id = ? AND company_id = ? AND id = ?',
+        [tenantId, companyId, data.customerPartyId]
+      );
+      if (!customer) {
+        throw new NotFoundException(`مشتری با شناسه ${data.customerPartyId} یافت نشد.`);
+      }
 
     const salesId = randomUUID();
     const now = new Date().toISOString();
@@ -120,7 +121,7 @@ export class SalesService {
           throw new BadRequestException(`برای فروش کالای فیزیکی (${product.name}) مشخص کردن انبار مبدا الزامی است.`);
         }
 
-        const currentState = await this.inventoryService.getStockState(tenantId, companyId, whId, item.productId);
+        const currentState = await this.inventoryService.getStockState(tenantId, companyId, whId, item.productId, tx);
         const valuationMethod = (product.valuation_method as ValuationMethod) || ValuationMethod.MOVING_AVERAGE;
 
         const issueRes = ValuationEngine.processIssue(currentState, qty.toFixed(0), valuationMethod);
@@ -145,7 +146,7 @@ export class SalesService {
           balanceTotalCost: issueRes.newTotalValue,
           fifoLayers: issueRes.updatedFifoLayers,
           description: `حواله خروج انبار فاکتور فروش ${data.documentNumber} به ${customer.name}`
-        });
+        }, tx);
       }
 
       processedItems.push({
@@ -208,9 +209,11 @@ export class SalesService {
           sourceModule: 'SALES_INVOICE',
           sourceDocumentId: salesId,
           lines: salesLines
-        }
+        },
+        tx
       );
       salesJournalEntryId = salesEntry.id;
+      await this.journalService.approveEntry(tenantId, salesJournalEntryId, userId, tx);
 
       // ب) سند بهای تمام‌شده کالای فروش‌رفته (COGS: بدهکار ۷۱۰۱ / بستانکار ۱۵۰۱)
       if (totalCogs.greaterThan(0)) {
@@ -241,71 +244,71 @@ export class SalesService {
             sourceModule: 'SALES_COGS',
             sourceDocumentId: salesId,
             lines: cogsLines
-          }
+          },
+          tx
         );
         cogsJournalEntryId = cogsEntry.id;
+        await this.journalService.approveEntry(tenantId, cogsJournalEntryId, userId, tx);
       }
     }
 
     // ۴. ثبت سربرگ و اقلام در دیتابیس در قالب تراکنش اتمیک
-    await this.db.transaction(async (tx) => {
+    await tx.run(
+      `INSERT INTO sales_documents (
+        id, tenant_id, company_id, branch_id, warehouse_id, customer_party_id,
+        document_number, document_type, date_shamsi, gross_amount, discount_amount,
+        net_amount, vat_amount, grand_total, cogs_total, status,
+        sales_journal_entry_id, cogs_journal_entry_id, payment_method,
+        description, created_by_user_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?, ?, ?)`,
+      [
+        salesId,
+        tenantId,
+        companyId,
+        branchId,
+        data.warehouseId || null,
+        data.customerPartyId,
+        data.documentNumber,
+        docType,
+        data.dateShamsi,
+        totalGrossAmount.toFixed(0),
+        overallDiscount.toFixed(0),
+        netAmount.toFixed(0),
+        totalVat.toFixed(0),
+        grandTotal.toFixed(0),
+        totalCogs.toFixed(0),
+        salesJournalEntryId || null,
+        cogsJournalEntryId || null,
+        data.paymentMethod || 'CREDIT',
+        data.description || null,
+        userId,
+        now
+      ]
+    );
+
+    for (const item of processedItems) {
       await tx.run(
-        `INSERT INTO sales_documents (
-          id, tenant_id, company_id, branch_id, warehouse_id, customer_party_id,
-          document_number, document_type, date_shamsi, gross_amount, discount_amount,
-          net_amount, vat_amount, grand_total, cogs_total, status,
-          sales_journal_entry_id, cogs_journal_entry_id, payment_method,
-          description, created_by_user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sales_document_items (
+          id, sales_document_id, product_id, variant_id, quantity, unit_price,
+          total_price, discount_amount, net_amount, vat_amount, unit_cogs, total_cogs, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
+          item.id,
           salesId,
-          tenantId,
-          companyId,
-          branchId,
-          data.warehouseId || null,
-          data.customerPartyId,
-          data.documentNumber,
-          docType,
-          data.dateShamsi,
-          totalGrossAmount.toFixed(0),
-          overallDiscount.toFixed(0),
-          netAmount.toFixed(0),
-          totalVat.toFixed(0),
-          grandTotal.toFixed(0),
-          totalCogs.toFixed(0),
-          salesJournalEntryId || null,
-          cogsJournalEntryId || null,
-          data.paymentMethod || 'CREDIT',
-          data.description || null,
-          userId,
+          item.productId,
+          item.variantId || null,
+          item.quantity,
+          item.unitPrice,
+          item.totalPrice,
+          item.discountAmount,
+          item.netAmount,
+          item.vatAmount,
+          item.unitCogs,
+          item.totalCogs,
           now
         ]
       );
-
-      for (const item of processedItems) {
-        await tx.run(
-          `INSERT INTO sales_document_items (
-            id, sales_document_id, product_id, variant_id, quantity, unit_price,
-            total_price, discount_amount, net_amount, vat_amount, unit_cogs, total_cogs, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            item.id,
-            salesId,
-            item.productId,
-            item.variantId || null,
-            item.quantity,
-            item.unitPrice,
-            item.totalPrice,
-            item.discountAmount,
-            item.netAmount,
-            item.vatAmount,
-            item.unitCogs,
-            item.totalCogs,
-            now
-          ]
-        );
-      }
-    });
+    }
 
     return {
       id: salesId,
@@ -325,6 +328,7 @@ export class SalesService {
       cogsJournalEntryId,
       items: processedItems
     };
+  });
   }
 
   async createSalesReturn(
@@ -341,103 +345,87 @@ export class SalesService {
       returnedItems: Array<{ productId: string; quantity: string | number }>;
     }
   ) {
-    const originalSales = await this.getSalesDocument(tenantId, companyId, salesId);
-    if (!originalSales) {
-      throw new NotFoundException(`فاکتور فروش مبدا با شناسه ${salesId} یافت نشد.`);
-    }
-
-    const customer = await this.db.queryOne(
-      'SELECT id, name, floating_dimension_id FROM parties WHERE id = ? AND tenant_id = ?',
-      [originalSales.customer_party_id, tenantId]
-    );
-
-    let totalReturnedGross = new Decimal(0);
-    let totalReturnedVat = new Decimal(0);
-    let totalReturnedCogs = new Decimal(0);
-
-    for (const retItem of data.returnedItems) {
-      const origItem = originalSales.items.find((it: any) => it.product_id === retItem.productId);
-      if (!origItem) {
-        throw new BadRequestException(`کالای ${retItem.productId} در فاکتور فروش اصلی وجود ندارد.`);
+    return await this.db.transaction(async (tx) => {
+      const originalSales = await this.getSalesDocument(tenantId, companyId, salesId);
+      if (!originalSales) {
+        throw new NotFoundException(`فاکتور فروش مبدا با شناسه ${salesId} یافت نشد.`);
       }
 
-      const retQty = new Decimal(retItem.quantity);
-      const unitPrice = new Decimal(origItem.unit_price);
-      const unitCogs = new Decimal(origItem.unit_cogs);
-      const origQty = new Decimal(origItem.quantity);
+      const customer = await tx.queryOne(
+        'SELECT id, name, floating_dimension_id FROM parties WHERE id = ? AND tenant_id = ?',
+        [originalSales.customer_party_id, tenantId]
+      );
 
-      const itemReturnedGross = retQty.times(unitPrice);
-      totalReturnedGross = totalReturnedGross.plus(itemReturnedGross);
+      let totalReturnedGross = new Decimal(0);
+      let totalReturnedVat = new Decimal(0);
+      let totalReturnedCogs = new Decimal(0);
 
-      // محاسبه نسبت مالیات ارزش افزوده برگشتی
-      if (new Decimal(origItem.vat_amount).greaterThan(0)) {
-        const itemReturnedVat = new Decimal(origItem.vat_amount).times(retQty.dividedBy(origQty)).round();
-        totalReturnedVat = totalReturnedVat.plus(itemReturnedVat);
+      for (const retItem of data.returnedItems) {
+        const origItem = originalSales.items.find((it: any) => it.product_id === retItem.productId);
+        if (!origItem) {
+          throw new BadRequestException(`کالای ${retItem.productId} در فاکتور فروش اصلی وجود ندارد.`);
+        }
+
+        const retQty = new Decimal(retItem.quantity);
+        const unitPrice = new Decimal(origItem.unit_price);
+        const unitCogs = new Decimal(origItem.unit_cogs);
+        const origQty = new Decimal(origItem.quantity);
+
+        const itemReturnedGross = retQty.times(unitPrice);
+        totalReturnedGross = totalReturnedGross.plus(itemReturnedGross);
+
+        // محاسبه نسبت مالیات ارزش افزوده برگشتی
+        if (new Decimal(origItem.vat_amount).greaterThan(0)) {
+          const itemReturnedVat = new Decimal(origItem.vat_amount).times(retQty.dividedBy(origQty)).round();
+          totalReturnedVat = totalReturnedVat.plus(itemReturnedVat);
+        }
+
+        const itemReturnedCogs = retQty.times(unitCogs);
+        totalReturnedCogs = totalReturnedCogs.plus(itemReturnedCogs);
+
+        // ورود مجدد کالا به کاردکس انبار
+        if (originalSales.warehouse_id) {
+          const currentState = await this.inventoryService.getStockState(
+            tenantId,
+            companyId,
+            originalSales.warehouse_id,
+            retItem.productId,
+            tx
+          );
+
+          const newQty = new Decimal(currentState.currentQuantity).plus(retQty);
+          const newTotalVal = new Decimal(currentState.totalValue).plus(itemReturnedCogs);
+          const newAvgCost = newQty.greaterThan(0) ? newTotalVal.dividedBy(newQty).round() : unitCogs;
+
+          await this.inventoryService.recordStockEntry(tenantId, companyId, {
+            warehouseId: originalSales.warehouse_id,
+            productId: retItem.productId,
+            documentType: StockDocumentType.RETURN_SALES,
+            documentId: salesId,
+            documentNumber: data.returnDocumentNumber,
+            dateShamsi: data.dateShamsi,
+            inQuantity: retQty.toFixed(0),
+            inUnitCost: unitCogs.toFixed(0),
+            inTotalCost: itemReturnedCogs.toFixed(0),
+            balanceQuantity: newQty.toFixed(0),
+            balanceUnitCost: newAvgCost.toFixed(0),
+            balanceTotalCost: newTotalVal.toFixed(0),
+            description: `برگشت از فروش فاکتور ${originalSales.document_number}`
+          }, tx);
+        }
       }
 
-      const itemReturnedCogs = retQty.times(unitCogs);
-      totalReturnedCogs = totalReturnedCogs.plus(itemReturnedCogs);
+      // صدور اسناد حسابداری برگشت از فروش و اصلاح بهای تمام شده
+      const postingLines = InventoryPostingEngine.buildSalesReturnLines({
+        customerPartyDimensionId: customer.floating_dimension_id,
+        returnedSalesAmount: totalReturnedGross.toFixed(0),
+        returnedVatAmount: totalReturnedVat.toFixed(0),
+        returnedCogsAmount: totalReturnedCogs.toFixed(0),
+        documentNumber: data.returnDocumentNumber,
+        descriptionSuffix: `برگشت از فاکتور ${originalSales.document_number}`
+      });
 
-      // ورود مجدد کالا به کاردکس انبار
-      if (originalSales.warehouse_id) {
-        const currentState = await this.inventoryService.getStockState(
-          tenantId,
-          companyId,
-          originalSales.warehouse_id,
-          retItem.productId
-        );
-
-        const newQty = new Decimal(currentState.currentQuantity).plus(retQty);
-        const newTotalVal = new Decimal(currentState.totalValue).plus(itemReturnedCogs);
-        const newAvgCost = newQty.greaterThan(0) ? newTotalVal.dividedBy(newQty).round() : unitCogs;
-
-        await this.inventoryService.recordStockEntry(tenantId, companyId, {
-          warehouseId: originalSales.warehouse_id,
-          productId: retItem.productId,
-          documentType: StockDocumentType.RETURN_SALES,
-          documentId: salesId,
-          documentNumber: data.returnDocumentNumber,
-          dateShamsi: data.dateShamsi,
-          inQuantity: retQty.toFixed(0),
-          inUnitCost: unitCogs.toFixed(0),
-          inTotalCost: itemReturnedCogs.toFixed(0),
-          balanceQuantity: newQty.toFixed(0),
-          balanceUnitCost: newAvgCost.toFixed(0),
-          balanceTotalCost: newTotalVal.toFixed(0),
-          description: `برگشت از فروش فاکتور ${originalSales.document_number}`
-        });
-      }
-    }
-
-    // صدور اسناد حسابداری برگشت از فروش و اصلاح بهای تمام شده
-    const postingLines = InventoryPostingEngine.buildSalesReturnLines({
-      customerPartyDimensionId: customer.floating_dimension_id,
-      returnedSalesAmount: totalReturnedGross.toFixed(0),
-      returnedVatAmount: totalReturnedVat.toFixed(0),
-      returnedCogsAmount: totalReturnedCogs.toFixed(0),
-      documentNumber: data.returnDocumentNumber,
-      descriptionSuffix: `برگشت از فاکتور ${originalSales.document_number}`
-    });
-
-    const finEntry = await this.journalService.createEntry(
-      tenantId,
-      companyId,
-      branchId,
-      fiscalYearId,
-      userId,
-      {
-        entryDateShamsi: data.dateShamsi,
-        entryType: JournalEntryType.NORMAL,
-        description: `سند مالی برگشت از فروش فاکتور شماره ${originalSales.document_number}`,
-        sourceModule: 'SALES_RETURN',
-        sourceDocumentId: salesId,
-        lines: postingLines.financialLines
-      }
-    );
-
-    let invEntryId: string | undefined;
-    if (totalReturnedCogs.greaterThan(0)) {
-      const invEntry = await this.journalService.createEntry(
+      const finEntry = await this.journalService.createEntry(
         tenantId,
         companyId,
         branchId,
@@ -446,24 +434,47 @@ export class SalesService {
         {
           entryDateShamsi: data.dateShamsi,
           entryType: JournalEntryType.NORMAL,
-          description: `سند برگشت بهای تمام‌شده کالای فروش‌رفته عطف به فاکتور ${originalSales.document_number}`,
-          sourceModule: 'SALES_RETURN_RESTOCK',
+          description: `سند مالی برگشت از فروش فاکتور شماره ${originalSales.document_number}`,
+          sourceModule: 'SALES_RETURN',
           sourceDocumentId: salesId,
-          lines: postingLines.inventoryLines
-        }
+          lines: postingLines.financialLines
+        },
+        tx
       );
-      invEntryId = invEntry.id;
-    }
+      await this.journalService.approveEntry(tenantId, finEntry.id, userId, tx);
 
-    return {
-      returnDocumentNumber: data.returnDocumentNumber,
-      originalSalesNumber: originalSales.document_number,
-      totalReturnedGross: totalReturnedGross.toFixed(0),
-      totalReturnedVat: totalReturnedVat.toFixed(0),
-      totalReturnedCogs: totalReturnedCogs.toFixed(0),
-      financialJournalEntryId: finEntry.id,
-      inventoryJournalEntryId: invEntryId
-    };
+      let invEntryId: string | undefined;
+      if (totalReturnedCogs.greaterThan(0)) {
+        const invEntry = await this.journalService.createEntry(
+          tenantId,
+          companyId,
+          branchId,
+          fiscalYearId,
+          userId,
+          {
+            entryDateShamsi: data.dateShamsi,
+            entryType: JournalEntryType.NORMAL,
+            description: `سند برگشت بهای تمام‌شده کالای فروش‌رفته عطف به فاکتور ${originalSales.document_number}`,
+            sourceModule: 'SALES_RETURN_RESTOCK',
+            sourceDocumentId: salesId,
+            lines: postingLines.inventoryLines
+          },
+          tx
+        );
+        invEntryId = invEntry.id;
+        await this.journalService.approveEntry(tenantId, invEntryId, userId, tx);
+      }
+
+      return {
+        returnDocumentNumber: data.returnDocumentNumber,
+        originalSalesNumber: originalSales.document_number,
+        totalReturnedGross: totalReturnedGross.toFixed(0),
+        totalReturnedVat: totalReturnedVat.toFixed(0),
+        totalReturnedCogs: totalReturnedCogs.toFixed(0),
+        financialJournalEntryId: finEntry.id,
+        inventoryJournalEntryId: invEntryId
+      };
+    });
   }
 
   async listSalesDocuments(tenantId: string, companyId: string) {

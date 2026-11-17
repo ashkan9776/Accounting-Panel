@@ -11,6 +11,7 @@ import {
   FloatingDimensionType,
   MoadianCryptoEngine
 } from '@accounting/core';
+import { DEFAULT_ACCOUNT_CODES } from '../modules/accounting/account-mapping.service';
 
 export async function runSeed(existingDb?: DatabaseService) {
   const db = existingDb || new DatabaseService();
@@ -273,6 +274,19 @@ export async function runSeed(existingDb?: DatabaseService) {
         s.isActive !== false,
         s.description || ''
       ]
+    );
+  }
+
+  // ۷.۱. نگاشت خودکار حساب‌ها (Account Mappings)
+  console.log('[Seed] Seeding Account Mappings...');
+  for (const [key, code] of Object.entries(DEFAULT_ACCOUNT_CODES)) {
+    const subId = `sub-${code}`;
+    const mapId = `map-${tenantId}-${companyId}-${key.toLowerCase()}`;
+    await run(
+      `INSERT INTO account_mappings (
+        id, tenant_id, company_id, mapping_key, subsidiary_account_id, description, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tenant_id, company_id, mapping_key) DO UPDATE SET subsidiary_account_id = EXCLUDED.subsidiary_account_id`,
+      [mapId, tenantId, companyId, key, subId, `نگاشت خودکار ${key}`, now]
     );
   }
 

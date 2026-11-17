@@ -12,8 +12,36 @@ function toPersianDigits(input: string | number | null | undefined): string {
     .replace(/[٠-٩]/g, (char) => farsiDigits[char.charCodeAt(0) - 1632]);
 }
 
+function shouldSkipNode(node: Node | null): boolean {
+  if (!node) return true;
+  const el = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement;
+  if (!el) return false;
+  const tag = el.tagName?.toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'code' || tag === 'pre' || tag === 'script' || tag === 'style') {
+    return true;
+  }
+  if (el.isContentEditable || el.getAttribute('data-latin-digits') === 'true') {
+    return true;
+  }
+  return false;
+}
+
+function convertDigitsInNode(node: Node) {
+  if (shouldSkipNode(node)) return;
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    if (node.nodeValue && /[0-9]/.test(node.nodeValue)) {
+      node.nodeValue = toPersianDigits(node.nodeValue);
+    }
+  } else {
+    for (let i = 0; i < node.childNodes.length; i++) {
+      convertDigitsInNode(node.childNodes[i]);
+    }
+  }
+}
+
 /**
- * کامپوننت سراسری جهت تضمین نمایش ارقام فارسی در کلیه مرورگرها و سیستم‌های عامل
+ * کامپوننت سراسری جهت تضمین ۱۰۰٪ نمایش ارقام فارسی در کلیه صفحات، متن‌ها و اجزای رابط کاربری
  */
 export function PersianDigitsInit() {
   useEffect(() => {
@@ -38,6 +66,34 @@ export function PersianDigitsInit() {
       ) {
         const res = origDateToLocale.call(this, locales || 'fa-IR-u-ca-persian', options);
         return toPersianDigits(res);
+      };
+    }
+
+    // ۳. پویش اولیه و رصد مداوم DOM جهت تضمین فارسی بودن کلیه اعداد نمایش‌یافته
+    if (typeof document !== 'undefined' && document.body) {
+      convertDigitsInNode(document.body);
+
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach((added) => convertDigitsInNode(added));
+          } else if (mutation.type === 'characterData') {
+            const target = mutation.target;
+            if (target.nodeValue && /[0-9]/.test(target.nodeValue) && !shouldSkipNode(target)) {
+              target.nodeValue = toPersianDigits(target.nodeValue);
+            }
+          }
+        }
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      return () => {
+        observer.disconnect();
       };
     }
   }, []);

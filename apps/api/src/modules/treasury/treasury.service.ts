@@ -191,10 +191,10 @@ export class TreasuryService {
     let destDimId = data.destId;
 
     if (data.sourceType === 'CASH') sourceSub = cashSub;
-    if (data.sourceType === 'PETTY') sourceSub = 'sub-1102';
+    if (data.sourceType === 'PETTY') sourceSub = cashSub;
 
     if (data.destType === 'BANK') destSub = bankSub;
-    if (data.destType === 'PETTY') destSub = 'sub-1102';
+    if (data.destType === 'PETTY') destSub = cashSub;
 
     // صدور سند حسابداری انتقال وجه
     const lines = ChequePostingEngine.buildMoneyTransferLines(

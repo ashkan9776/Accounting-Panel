@@ -10,6 +10,16 @@ export interface ChequePostingContext {
   cashDeskDimensionId?: string;
   pettyCustodianDimensionId?: string;
   descriptionSuffix?: string;
+  // نگاشت‌های پویا با مقادیر پیش‌فرض جهت حفظ سازگاری
+  notesReceivableInHandAccountId?: string;       // پیش‌فرض: sub-1201 (اسناد دریافتنی نزد صندوق)
+  accountsReceivableAccountId?: string;          // پیش‌فرض: sub-1301 (حساب‌های دریافتنی تجاری)
+  notesReceivableInCollectionAccountId?: string; // پیش‌فرض: sub-1202 (اسناد دریافتنی در جریان وصول)
+  bankAccountId?: string;                        // پیش‌فرض: sub-1103 (موجودی نزد بانک‌ها)
+  bouncedNotesAccountId?: string;                // پیش‌فرض: sub-1203 (اسناد دریافتنی برگشتی)
+  accountsPayableAccountId?: string;             // پیش‌فرض: sub-3201 (بستانکاران تجاری)
+  notesPayableAccountId?: string;                // پیش‌فرض: sub-3101 (اسناد پرداختنی تجاری)
+  guaranteeDebitAccountId?: string;              // پیش‌فرض: sub-9101 (انتظامی به نفع شرکت)
+  guaranteeCreditAccountId?: string;             // پیش‌فرض: sub-9102 (طرف حساب انتظامی)
 }
 
 export class ChequePostingEngine {
@@ -20,14 +30,14 @@ export class ChequePostingEngine {
     const desc = `دریافت چک صیادی شماره ${ctx.chequeSerialNumber}${ctx.sayadId ? ` (صیاد: ${ctx.sayadId})` : ''}${ctx.descriptionSuffix ? ` - ${ctx.descriptionSuffix}` : ''}`;
     return [
       {
-        subsidiaryAccountId: 'sub-1201', // اسناد دریافتنی نزد صندوق
+        subsidiaryAccountId: ctx.notesReceivableInHandAccountId || 'sub-1201', // اسناد دریافتنی نزد صندوق
         floatingDimension1Id: ctx.drawerPartyDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1301', // بدهکاران تجاری
+        subsidiaryAccountId: ctx.accountsReceivableAccountId || 'sub-1301', // بدهکاران تجاری
         floatingDimension1Id: ctx.drawerPartyDimensionId,
         debit: 0,
         credit: ctx.amount,
@@ -46,14 +56,14 @@ export class ChequePostingEngine {
     const desc = `واگذاری چک شماره ${ctx.chequeSerialNumber} به بانک جهت وصول`;
     return [
       {
-        subsidiaryAccountId: 'sub-1202', // اسناد دریافتنی در جریان وصول
+        subsidiaryAccountId: ctx.notesReceivableInCollectionAccountId || 'sub-1202', // اسناد دریافتنی در جریان وصول
         floatingDimension1Id: ctx.bankDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1201', // اسناد دریافتنی نزد صندوق
+        subsidiaryAccountId: ctx.notesReceivableInHandAccountId || 'sub-1201', // اسناد دریافتنی نزد صندوق
         floatingDimension1Id: ctx.drawerPartyDimensionId,
         debit: 0,
         credit: ctx.amount,
@@ -72,14 +82,14 @@ export class ChequePostingEngine {
     const desc = `وصول چک صیادی شماره ${ctx.chequeSerialNumber} و واریز به حساب بانکی`;
     return [
       {
-        subsidiaryAccountId: 'sub-1103', // موجودی نزد بانک‌ها
+        subsidiaryAccountId: ctx.bankAccountId || 'sub-1103', // موجودی نزد بانک‌ها
         floatingDimension1Id: ctx.bankDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1202', // اسناد در جریان وصول
+        subsidiaryAccountId: ctx.notesReceivableInCollectionAccountId || 'sub-1202', // اسناد در جریان وصول
         floatingDimension1Id: ctx.bankDimensionId,
         debit: 0,
         credit: ctx.amount,
@@ -98,14 +108,14 @@ export class ChequePostingEngine {
     const desc = `برگشت چک صیادی شماره ${ctx.chequeSerialNumber} به علت عدم موجودی`;
     return [
       {
-        subsidiaryAccountId: 'sub-1203', // اسناد دریافتنی برگشتی
+        subsidiaryAccountId: ctx.bouncedNotesAccountId || 'sub-1203', // اسناد دریافتنی برگشتی
         floatingDimension1Id: ctx.drawerPartyDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1202', // اسناد در جریان وصول
+        subsidiaryAccountId: ctx.notesReceivableInCollectionAccountId || 'sub-1202', // اسناد در جریان وصول
         floatingDimension1Id: ctx.bankDimensionId,
         debit: 0,
         credit: ctx.amount,
@@ -124,14 +134,14 @@ export class ChequePostingEngine {
     const desc = `خرج چک دریافتی شماره ${ctx.chequeSerialNumber} و انتقال به بستانکار تجاری`;
     return [
       {
-        subsidiaryAccountId: 'sub-3201', // بستانکاران تجاری
+        subsidiaryAccountId: ctx.accountsPayableAccountId || 'sub-3201', // بستانکاران تجاری
         floatingDimension1Id: ctx.payeePartyDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1201', // اسناد نزد صندوق
+        subsidiaryAccountId: ctx.notesReceivableInHandAccountId || 'sub-1201', // اسناد نزد صندوق
         floatingDimension1Id: ctx.drawerPartyDimensionId,
         debit: 0,
         credit: ctx.amount,
@@ -150,14 +160,14 @@ export class ChequePostingEngine {
     const desc = `صدور چک پرداختی شماره ${ctx.chequeSerialNumber} عهده بانک در وجه بستانکار`;
     return [
       {
-        subsidiaryAccountId: 'sub-3201', // بستانکاران تجاری
+        subsidiaryAccountId: ctx.accountsPayableAccountId || 'sub-3201', // بستانکاران تجاری
         floatingDimension1Id: ctx.payeePartyDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-3101', // اسناد پرداختنی تجاری عهده بانک‌ها
+        subsidiaryAccountId: ctx.notesPayableAccountId || 'sub-3101', // اسناد پرداختنی تجاری عهده بانک‌ها
         floatingDimension1Id: ctx.bankDimensionId,
         debit: 0,
         credit: ctx.amount,
@@ -176,14 +186,14 @@ export class ChequePostingEngine {
     const desc = `پاس شدن چک پرداختی شماره ${ctx.chequeSerialNumber} و کسر از حساب بانک`;
     return [
       {
-        subsidiaryAccountId: 'sub-3101', // اسناد پرداختنی عهده بانک‌ها
+        subsidiaryAccountId: ctx.notesPayableAccountId || 'sub-3101', // اسناد پرداختنی عهده بانک‌ها
         floatingDimension1Id: ctx.bankDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-1103', // موجودی نزد بانک‌ها
+        subsidiaryAccountId: ctx.bankAccountId || 'sub-1103', // موجودی نزد بانک‌ها
         floatingDimension1Id: ctx.bankDimensionId,
         debit: 0,
         credit: ctx.amount,
@@ -199,14 +209,14 @@ export class ChequePostingEngine {
     const desc = `دریافت چک ضمانتی حسن انجام کار به شماره ${ctx.chequeSerialNumber}`;
     return [
       {
-        subsidiaryAccountId: 'sub-9101', // حساب‌های انتظامی به نفع شرکت
+        subsidiaryAccountId: ctx.guaranteeDebitAccountId || 'sub-9101', // حساب‌های انتظامی به نفع شرکت
         floatingDimension1Id: ctx.drawerPartyDimensionId,
         debit: ctx.amount,
         credit: 0,
         description: desc
       },
       {
-        subsidiaryAccountId: 'sub-9102', // طرف حساب‌های انتظامی به نفع شرکت
+        subsidiaryAccountId: ctx.guaranteeCreditAccountId || 'sub-9102', // طرف حساب‌های انتظامی به نفع شرکت
         floatingDimension1Id: ctx.drawerPartyDimensionId,
         debit: 0,
         credit: ctx.amount,

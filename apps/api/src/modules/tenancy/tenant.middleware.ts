@@ -19,17 +19,17 @@ declare global {
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
-    // استخراج تنانت از هدر یا مقدار پیش‌فرض
+    // استخراج تنانت و شناسه شرکت از هدرهای احراز هویت
     const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-pishro';
-    const companyId = (req.headers['x-company-id'] as string) || 'comp-pishro-1';
-    const branchId = (req.headers['x-branch-id'] as string) || 'branch-central-1';
-    const fiscalYearId = (req.headers['x-fiscal-year-id'] as string) || 'fy-1403';
+    const companyId = req.headers['x-company-id'] as string;
+    const branchId = req.headers['x-branch-id'] as string;
+    const fiscalYearId = req.headers['x-fiscal-year-id'] as string;
 
     req.tenantContext = {
       tenantId,
-      companyId,
-      branchId,
-      fiscalYearId
+      companyId: companyId || (tenantId === 'tenant-pishro' ? 'comp-pishro-1' : ''),
+      branchId: branchId || (tenantId === 'tenant-pishro' ? 'branch-central-1' : undefined),
+      fiscalYearId: fiscalYearId || (tenantId === 'tenant-pishro' ? 'fy-1403' : undefined)
     };
 
     next();

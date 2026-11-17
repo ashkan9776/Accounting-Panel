@@ -79,11 +79,11 @@ export class ProductionOrdersService {
     const bom = await this.bomsService.getBom(tenantId, companyId, targetBomId);
 
     // شماره‌گذاری سریال سفارش تولید
-    const countRow = await this.db.queryOne(
-      `SELECT COUNT(*) as cnt FROM manufacturing_production_orders WHERE tenant_id = ? AND company_id = ?`,
+    const countRow = await this.db.queryOne<{ cnt: any }>(
+      `SELECT COUNT(*)::int as cnt FROM manufacturing_production_orders WHERE tenant_id = ? AND company_id = ?`,
       [tenantId, companyId]
     );
-    const orderIndex = ((countRow?.cnt || 0) + 1).toString().padStart(4, '0');
+    const orderIndex = (Number(countRow?.cnt ?? 0) + 1).toString().padStart(4, '0');
     const orderNumber = `MO-${data.dateShamsi.substring(0, 4)}-${orderIndex}`;
 
     const orderId = randomUUID();

@@ -30,16 +30,25 @@ export default function LoginPage() {
         body: JSON.stringify({
           mobile: toEnglishDigits(mobile.trim()),
           password: password.trim(),
-          tenantId: 'tenant-pishro',
         }),
       });
 
       if (res.accessToken) {
         localStorage.setItem('access_token', res.accessToken);
         localStorage.setItem('user', JSON.stringify(res.user));
-        localStorage.setItem('tenant_id', res.user?.tenantId || 'tenant-pishro');
-        localStorage.setItem('company_id', 'comp-pishro-1');
-        localStorage.setItem('company_name', 'شرکت صنایع پیشرو پارس');
+        localStorage.setItem('tenant_id', res.user?.tenantId || '');
+        if (res.user?.companyId) {
+          localStorage.setItem('company_id', res.user.companyId);
+        }
+        if (res.user?.companyName) {
+          localStorage.setItem('company_name', res.user.companyName);
+        }
+        if (res.user?.branchId) {
+          localStorage.setItem('branch_id', res.user.branchId);
+        }
+        if (res.user?.fiscalYearId) {
+          localStorage.setItem('fiscal_year_id', res.user.fiscalYearId);
+        }
         router.push('/dashboard');
       } else {
         setError(res.message || 'خطا در احراز هویت.');
@@ -138,19 +147,21 @@ export default function LoginPage() {
           </form>
 
           {/* راهنمای اطلاعات ورود */}
-          <div className="mt-6 pt-5 border-t border-slate-700/60 space-y-2">
-            <button
-              type="button"
-              onClick={fillQuickAdmin}
-              className="w-full py-2 px-3 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium flex items-center justify-center gap-2 border border-slate-600/50 transition-colors"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>ورود سریع با کاربر پیش‌فرض دمو (۰۹۱۲۰۰۰۰۰۰۰ / admin12345)</span>
-            </button>
-            <div className="text-[11px] text-slate-400 text-center leading-relaxed">
-              برای سازمان‌های ثبت‌شده در Onboarding: از شماره موبایل ثبت‌شده و کلمه عبور <span className="font-mono text-amber-300">Admin@2026!Sec</span> استفاده نمایید.
+          {process.env.NODE_ENV !== 'production' && (
+            <div className="mt-6 pt-5 border-t border-slate-700/60 space-y-2">
+              <button
+                type="button"
+                onClick={fillQuickAdmin}
+                className="w-full py-2 px-3 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium flex items-center justify-center gap-2 border border-slate-600/50 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>ورود سریع با کاربر پیش‌فرض دمو (۰۹۱۲۰۰۰۰۰۰۰ / admin12345)</span>
+              </button>
+              <div className="text-[11px] text-slate-400 text-center leading-relaxed">
+                برای سازمان‌های ثبت‌شده در Onboarding: از شماره موبایل ثبت‌شده و کلمه عبور <span className="font-mono text-amber-300">Admin@2026!Sec</span> استفاده نمایید.
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* هدایت به Onboarding */}

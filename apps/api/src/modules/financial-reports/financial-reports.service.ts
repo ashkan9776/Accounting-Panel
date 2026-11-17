@@ -22,6 +22,30 @@ export class FinancialReportsService {
     private readonly reportsService: ReportsService
   ) {}
 
+  private async getFiscalYearDates(
+    tenantId: string,
+    companyId: string,
+    fiscalYearId?: string
+  ): Promise<{ startDate: string; endDate: string }> {
+    let fy: any = null;
+    if (fiscalYearId) {
+      fy = await this.db.queryOne(
+        'SELECT start_date_shamsi, end_date_shamsi FROM fiscal_years WHERE id = ? AND tenant_id = ? AND company_id = ?',
+        [fiscalYearId, tenantId, companyId]
+      );
+    }
+    if (!fy) {
+      fy = await this.db.queryOne(
+        'SELECT start_date_shamsi, end_date_shamsi FROM fiscal_years WHERE tenant_id = ? AND company_id = ? AND is_closed = false ORDER BY start_date_shamsi DESC LIMIT 1',
+        [tenantId, companyId]
+      );
+    }
+    return {
+      startDate: fy?.start_date_shamsi || '1403/01/01',
+      endDate: fy?.end_date_shamsi || '1403/12/29'
+    };
+  }
+
   // ۱. تولید صورت سود و زیان جامع (Income Statement)
   async getIncomeStatement(
     tenantId: string,
@@ -31,8 +55,9 @@ export class FinancialReportsService {
     fiscalYearId?: string
   ): Promise<IncomeStatementReport> {
     const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ? AND tenant_id = ?', [companyId, tenantId]);
-    const fromDate = fromDateShamsi || '1403/01/01';
-    const toDate = toDateShamsi || '1403/12/29';
+    const dates = await this.getFiscalYearDates(tenantId, companyId, fiscalYearId);
+    const fromDate = fromDateShamsi || dates.startDate;
+    const toDate = toDateShamsi || dates.endDate;
     const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY', fromDate, toDate);
 
     return IncomeStatementEngine.generateIncomeStatement({
@@ -51,7 +76,8 @@ export class FinancialReportsService {
     fiscalYearId?: string
   ): Promise<BalanceSheetReport> {
     const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ? AND tenant_id = ?', [companyId, tenantId]);
-    const asOfDate = asOfDateShamsi || '1403/12/29';
+    const dates = await this.getFiscalYearDates(tenantId, companyId, fiscalYearId);
+    const asOfDate = asOfDateShamsi || dates.endDate;
     const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY', undefined, asOfDate);
     const is = await this.getIncomeStatement(tenantId, companyId, undefined, asOfDate, fiscalYearId);
 
@@ -72,8 +98,9 @@ export class FinancialReportsService {
     fiscalYearId?: string
   ): Promise<CashFlowReport> {
     const company = await this.db.queryOne('SELECT * FROM companies WHERE id = ? AND tenant_id = ?', [companyId, tenantId]);
-    const fromDate = fromDateShamsi || '1403/01/01';
-    const toDate = toDateShamsi || '1403/12/29';
+    const dates = await this.getFiscalYearDates(tenantId, companyId, fiscalYearId);
+    const fromDate = fromDateShamsi || dates.startDate;
+    const toDate = toDateShamsi || dates.endDate;
     const is = await this.getIncomeStatement(tenantId, companyId, fromDate, toDate, fiscalYearId);
     const tb = await this.reportsService.getTrialBalance(tenantId, companyId, fiscalYearId, 'SUBSIDIARY', fromDate, toDate);
 
@@ -124,22 +151,21 @@ export class FinancialReportsService {
     const invChange = invClosing.minus(invOpening);
     const apChange = apClosing.minus(apOpening);
 
-    // استخراج معاملات خرید و فروش دارایی‌های ثابت با استفاده از Decimal
-    let faQuery = `SELECT historical_cost, disposal_sale_price, status, acquisition_journal_entry_id FROM fixed_assets WHERE tenant_id = ? AND company_id = ?`;
-    const faParams: any[] = [tenantId, companyId];
-    if (fromDateShamsi && toDateShamsi) {
-      faQuery += ` AND (purchase_date_shamsi BETWEEN ? AND ? OR disposal_date_shamsi BETWEEN ? AND ?)`;
-      faParams.push(fromDateShamsi, toDateShamsi, fromDateShamsi, toDateShamsi);
-    }
-    const faRows = await this.db.query(faQuery, faParams);
+    // استخراج معاملات خرید و فروش دارایی‌های ثابت با استفاده از Decimal (بررسی مجزای بازه تاریخ خرید و تاریخ واگذاری)
+    const faQuery = `SELECT historical_cost, purchase_date_shamsi, disposal_sale_price, disposal_date_shamsi, status, acquisition_journal_entry_id FROM fixed_assets WHERE tenant_id = ? AND company_id = ?`;
+    const faRows = await this.db.query(faQuery, [tenantId, companyId]);
     let purchases = new Decimal(0);
     let sales = new Decimal(0);
     for (const fa of faRows) {
       if (fa.acquisition_journal_entry_id && fa.historical_cost) {
-        purchases = purchases.plus(new Decimal(fa.historical_cost));
+        if (!fromDate || !toDate || (fa.purchase_date_shamsi >= fromDate && fa.purchase_date_shamsi <= toDate)) {
+          purchases = purchases.plus(new Decimal(fa.historical_cost));
+        }
       }
-      if (fa.status === 'SOLD' && fa.disposal_sale_price) {
-        sales = sales.plus(new Decimal(fa.disposal_sale_price));
+      if ((fa.status === 'SOLD' || fa.status === 'DISPOSED') && fa.disposal_sale_price) {
+        if (!fromDate || !toDate || (fa.disposal_date_shamsi >= fromDate && fa.disposal_date_shamsi <= toDate)) {
+          sales = sales.plus(new Decimal(fa.disposal_sale_price));
+        }
       }
     }
 

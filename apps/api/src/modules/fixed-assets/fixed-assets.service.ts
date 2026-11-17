@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { randomUUID } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import { JournalEntriesService } from '../accounting/journal-entries.service';
+import { AccountMappingService } from '../accounting/account-mapping.service';
 import {
   DepreciationEngine,
   AssetPostingEngine,
@@ -18,7 +19,8 @@ Decimal.set({ precision: 28, rounding: Decimal.ROUND_HALF_UP });
 export class FixedAssetsService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly journalService: JournalEntriesService
+    private readonly journalService: JournalEntriesService,
+    private readonly accountMapping: AccountMappingService
   ) {}
 
   // ۱. ثبت و تحصیل دارایی ثابت جدید و صدور خودکار سند خرید دارایی
@@ -54,6 +56,8 @@ export class FixedAssetsService {
     const salvage = new Decimal(data.salvageValue || 0);
     const now = new Date().toISOString();
 
+    const defaultBankSub = await this.accountMapping.getAccount(tenantId, companyId, 'BANK', 'sub-1102');
+
     // صدور سند خرید و تحصیل دارایی ثابت
     const journalLines = AssetPostingEngine.buildAcquisitionLines({
       assetCode: data.assetCode,
@@ -61,7 +65,7 @@ export class FixedAssetsService {
       category: data.category,
       purchaseDateShamsi: data.purchaseDateShamsi,
       cost: cost.toFixed(0),
-      creditSubsidiaryId: data.creditSubsidiaryId || 'sub-1102',
+      creditSubsidiaryId: data.creditSubsidiaryId || defaultBankSub,
       creditFloatingDimensionId: data.creditFloatingDimensionId,
       costCenterDimensionId: data.costCenterDimensionId
     });
@@ -309,10 +313,12 @@ export class FixedAssetsService {
       salePrice: data.salePrice
     });
 
+    const defaultBankSub = await this.accountMapping.getAccount(tenantId, companyId, 'BANK', 'sub-1102');
+
     const journalLines = AssetPostingEngine.buildDisposalLines({
       disposalResult,
       category: asset.category as AssetCategory,
-      paymentReceivableSubsidiaryId: data.paymentReceivableSubsidiaryId || 'sub-1102',
+      paymentReceivableSubsidiaryId: data.paymentReceivableSubsidiaryId || defaultBankSub,
       paymentFloatingDimensionId: data.paymentFloatingDimensionId,
       costCenterDimensionId: data.costCenterDimensionId || asset.cost_center_dimension_id
     });
